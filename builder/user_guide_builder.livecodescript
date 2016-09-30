@@ -137,10 +137,15 @@ private command OutputGuidePdf
    put "--margin-top 30 --margin-bottom 20 --margin-left 20 --margin-right 20 " after tArgs
    put "--enable-internal-links --encoding UTF-8 " after tArgs
    
-   local tExitCode
+   local tExitCode, tLine, tFullCommand
+   put tCommand && tArgs && tHtmlPath && tPdfPath into tFullCommand
    builderLog "report", merge("Generating [[tPdfPath]] with [[tCommand]]")
-   get shell(tCommand && tArgs && tHtmlPath && tPdfPath)
+   builderLog "debug", tFullCommand
+   get shell(tFullCommand)
    put the result into tExitCode
+   repeat for each line tLine in it
+      builderLog "debug", tLine
+   end repeat
 
    if tExitCode is not 0 then
       throw merge("Failed to run [[tCommand]]: exit code [[tExitCode]]")
