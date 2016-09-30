@@ -136,6 +136,8 @@ private command OutputGuidePdf
    put "--footer-center [page] --footer-font-size 8 --footer-spacing 5 " after tArgs
    put "--margin-top 30 --margin-bottom 20 --margin-left 20 --margin-right 20 " after tArgs
    put "--enable-internal-links --encoding UTF-8 " after tArgs
+   -- Allow up to 10 minutes for converting MarkDown to HTML
+   put "--debug-javascript --javascript-delay 600000 " after tArgs
    
    local tExitCode, tLine, tFullCommand
    put tCommand && tArgs && tHtmlPath && tPdfPath into tFullCommand
