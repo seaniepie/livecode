@@ -169,16 +169,19 @@ dist-notes-commercial:
 
 dist-guide-community:
 	WKHTMLTOPDF=$(WKHTMLTOPDF) \
+	BUILDER_DEBUG=1 \
 	$(buildtool_command) --platform $(buildtool_platform) \
 		--edition community \
 	    --stage guide --warn-as-error
 	    
 dist-guide-commercial:
 	WKHTMLTOPDF=$(WKHTMLTOPDF) \
+	BUILDER_DEBUG=1 \
 	$(buildtool_command) --platform $(buildtool_platform) \
 		--edition indy \
 	    --stage guide --warn-as-error
 	WKHTMLTOPDF=$(WKHTMLTOPDF) \
+	BUILDER_DEBUG=1 \
 	$(buildtool_command) --platform $(buildtool_platform) \
 		--edition business \
 	    --stage guide --warn-as-error
