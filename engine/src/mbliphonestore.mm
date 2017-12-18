@@ -224,7 +224,7 @@ void MCPurchaseGetProductIdentifier(MCExecContext& ctxt, MCPurchase *p_purchase,
 	else
 		t_payment = t_ios_data->payment;
     
-    if (t_payment != nil && MCStringCreateWithCFString((CFStringRef)[t_payment productIdentifier], r_productIdentifier))
+    if (t_payment != nil && MCStringCreateWithCFStringRef((CFStringRef)[t_payment productIdentifier], r_productIdentifier))
         return;
     
     ctxt . Throw();
@@ -293,7 +293,7 @@ void MCPurchaseGetTransactionIdentifier(MCExecContext& ctxt, MCPurchase *p_purch
     // PM-2015-03-10: [[ Bug 14858 ]] transactionIdentifier can be nil if the purchase is still in progress (i.e when purchaseStateUpdate msg is sent with state=sendingRequest)
     if (t_transaction != nil
             && [t_transaction transactionIdentifier] != nil
-            && MCStringCreateWithCFString((CFStringRef)[t_transaction transactionIdentifier], r_identifier))
+            && MCStringCreateWithCFStringRef((CFStringRef)[t_transaction transactionIdentifier], r_identifier))
         return;
     
     ctxt . Throw();
@@ -511,7 +511,7 @@ void update_purchase_state(MCPurchase *p_purchase)
 				{
 					p_purchase->state = kMCPurchaseStateError;
                     MCValueRelease(t_ios_data->error);
-                    MCStringCreateWithCFString((CFStringRef)[t_error localizedDescription], t_ios_data->error);
+                    MCStringCreateWithCFStringRef((CFStringRef)[t_error localizedDescription], t_ios_data->error);
 				}
 				break;
 			}
@@ -557,7 +557,7 @@ void update_purchase_state(MCPurchase *p_purchase)
 			
 			t_success = MCMemoryNew(t_ios_data);
 			if (t_success)
-				t_success = MCStringCreateWithCFString((CFStringRef)[[t_transaction payment] productIdentifier], t_ios_data->product_id);
+				t_success = MCStringCreateWithCFStringRef((CFStringRef)[[t_transaction payment] productIdentifier], t_ios_data->product_id);
 
 			if (t_success)
 				t_success = MCPurchaseCreate(t_ios_data->product_id, t_ios_data, t_purchase);
@@ -700,7 +700,7 @@ bool MCStorePostProductRequestResponse(SKProduct *p_product);
         for (NSString *t_invalid_id in response.invalidProductIdentifiers)
         {
             MCAutoStringRef t_string;
-            /* UNCHECKED */ MCStringCreateWithCFString((CFStringRef)t_invalid_id, &t_string);
+            /* UNCHECKED */ MCStringCreateWithCFStringRef((CFStringRef)t_invalid_id, &t_string);
             MCStorePostProductRequestError(*t_string, MCSTR("invalid product identifier"));
         }
     }
@@ -723,8 +723,8 @@ bool MCStorePostProductRequestResponse(SKProduct *p_product);
 {
     MCAutoStringRef t_product, t_error;
     
-    /* UNCHECKED */ MCStringCreateWithCFString((CFStringRef)[(com_runrev_livecode_MCProductsRequest*)request getProductId], &t_product);
-    /* UNCHECKED */ MCStringCreateWithCFString((CFStringRef)[error description], &t_error);
+    /* UNCHECKED */ MCStringCreateWithCFStringRef((CFStringRef)[(com_runrev_livecode_MCProductsRequest*)request getProductId], &t_product);
+    /* UNCHECKED */ MCStringCreateWithCFStringRef((CFStringRef)[error description], &t_error);
 
     MCStorePostProductRequestError(*t_product, *t_error);
     [request release];
@@ -871,11 +871,11 @@ void MCStoreProductRequestResponseEvent::Dispatch()
     t_locale_currency_code = [[m_product priceLocale] objectForKey: NSLocaleCurrencyCode];
     t_locale_currency_symbol = [[m_product priceLocale] objectForKey: NSLocaleCurrencySymbol];
     
-    /* UNCHECKED */ MCStringCreateWithCFString((CFStringRef)[m_product productIdentifier], &t_product_id);
-    /* UNCHECKED */ MCStringCreateWithCFString((CFStringRef)[m_product localizedDescription], &t_description);
-    /* UNCHECKED */ MCStringCreateWithCFString((CFStringRef)[m_product localizedTitle], &t_title);
-    /* UNCHECKED */ MCStringCreateWithCFString((CFStringRef)t_locale_currency_code, &t_currency_code);
-    /* UNCHECKED */ MCStringCreateWithCFString((CFStringRef)t_locale_currency_symbol, &t_currency_symbol);
+    /* UNCHECKED */ MCStringCreateWithCFStringRef((CFStringRef)[m_product productIdentifier], &t_product_id);
+    /* UNCHECKED */ MCStringCreateWithCFStringRef((CFStringRef)[m_product localizedDescription], &t_description);
+    /* UNCHECKED */ MCStringCreateWithCFStringRef((CFStringRef)[m_product localizedTitle], &t_title);
+    /* UNCHECKED */ MCStringCreateWithCFStringRef((CFStringRef)t_locale_currency_code, &t_currency_code);
+    /* UNCHECKED */ MCStringCreateWithCFStringRef((CFStringRef)t_locale_currency_symbol, &t_currency_symbol);
 
     unichar_t *t_unicode_description = nil;
     uint32_t t_unicode_description_length = 0;
@@ -901,59 +901,48 @@ void MCStoreProductRequestResponseEvent::Dispatch()
     
     MCAutoNumberRef t_price_number;
     
-    MCNewAutoNameRef t_price_key, t_description_key, t_title_key, t_currency_code_key, t_currency_symbol_key;
-    MCNewAutoNameRef t_unicode_description_key, t_unicode_title_key, t_unicode_currency_symbol_key;
-    
     MCAutoArrayRef t_array;
     if (t_success)
         t_success = MCArrayCreateMutable(&t_array);
     
     if (t_success)
         t_success = (MCNumberCreateWithReal([[m_product price] doubleValue], &t_price_number)
-                     && MCNameCreateWithCString("price", &t_price_key)
-                     && MCArrayStoreValue(*t_array, kMCCompareCaseless, *t_price_key, *t_price_number));
+                     && MCArrayStoreValue(*t_array, kMCCompareCaseless, MCNAME("price"), *t_price_number));
 
         
     if (t_success && *t_description != nil)
     {
-        t_success = (MCNameCreateWithCString("description", &t_description_key)
-                     && MCArrayStoreValue(*t_array, kMCCompareCaseless, *t_description_key, *t_description));
+        t_success = MCArrayStoreValue(*t_array, kMCCompareCaseless, MCNAME("description"), *t_description);
     }
     
     if (t_success && *t_title != nil)
     {
-        t_success = (MCNameCreateWithCString("title", &t_title_key)
-                     && MCArrayStoreValue(*t_array, kMCCompareCaseless, *t_title_key, *t_title));
+        t_success = MCArrayStoreValue(*t_array, kMCCompareCaseless, MCNAME("title"), *t_title);
     }
     
     if (t_success && *t_currency_code != nil)
     {
-        t_success = (MCNameCreateWithCString("currency code", &t_currency_code_key)
-                     && MCArrayStoreValue(*t_array, kMCCompareCaseless, *t_currency_code_key, *t_currency_code));
+        t_success = MCArrayStoreValue(*t_array, kMCCompareCaseless, MCNAME("currency code"), *t_currency_code);
     }
     
     if (t_success && *t_currency_symbol != nil)
     {
-        t_success = (MCNameCreateWithCString("currency symbol", &t_currency_symbol_key)
-                     && MCArrayStoreValue(*t_array, kMCCompareCaseless, *t_currency_symbol_key, *t_currency_symbol));
+        t_success = MCArrayStoreValue(*t_array, kMCCompareCaseless, MCNAME("currency symbol"), *t_currency_symbol);
     }
     
     if (t_success && *t_unicode_description != 0)
     {
-        t_success = (MCNameCreateWithCString("unicode description", &t_unicode_description_key)
-                     && MCArrayStoreValue(*t_array, kMCCompareCaseless, *t_unicode_description_key, *t_utf16_description));
+        t_success = MCArrayStoreValue(*t_array, kMCCompareCaseless, MCNAME("unicode description"), *t_utf16_description);
     }
     
     if (t_success && *t_unicode_title != 0)
     {
-        t_success = (MCNameCreateWithCString("unicode title", &t_unicode_title_key)
-                     && MCArrayStoreValue(*t_array, kMCCompareCaseless, *t_unicode_title_key, *t_utf16_title));
+        t_success = MCArrayStoreValue(*t_array, kMCCompareCaseless, MCNAME("unicode title"), *t_utf16_title);
     }
     
     if (t_success && *t_unicode_currency_symbol != 0)
     {
-        t_success = (MCNameCreateWithCString("unicode currency symbol", &t_unicode_currency_symbol_key)
-                     && MCArrayStoreValue(*t_array, kMCCompareCaseless, *t_unicode_currency_symbol_key, *t_utf16_currency_symbol));
+        t_success = MCArrayStoreValue(*t_array, kMCCompareCaseless, MCNAME("unicode currency symbol"), *t_utf16_currency_symbol);
     }
     
     MCParameter p1, p2;

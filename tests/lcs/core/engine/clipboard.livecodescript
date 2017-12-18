@@ -18,15 +18,13 @@ along with LiveCode.  If not see <http://www.gnu.org/licenses/>.  */
 
 
 -- Clipboard access requires system interaction so, generally, cannot
--- be run in no-UI mode
+-- be run in no-UI mode or on server
 on TestSetup
-   if the environment is "command line" and \
-      the platform is "Linux" then
-      return "SKIP Clipboard requires GUI mode on Linux"
+   if the platform is "Linux" then
+      TestSkipIf "environment", "server"
+      TestSkipIfNot "ui"
    end if
-   if the platform is not among the items of "MacOS,Win32,Linux" then
-      return "SKIP Clipboard not available on" && the platform
-   end if
+   TestSkipIfNot "desktop"
 end TestSetup
 
 -- Utility function that returns the folder containing this test
@@ -38,21 +36,27 @@ end _TestPath
 -- Utility function that returns the smallest possible valid PNG image
 local sTinyPNG
 private function _TinyPNG
-   if sTinyPNG is empty then put url format("binfile:%s/tiny.png", _TestPath()) into sTinyPNG
+   if sTinyPNG is empty then 
+      put url ("binfile:" & TestGetInputFile("tiny.png")) into sTinyPNG
+   end if
    return sTinyPNG
 end _TinyPNG
 
 -- Utility function that returns the smallest possible valid GIF image
 local sTinyGIF
 private function _TinyGIF
-   if sTinyGIF is empty then put url format("binfile:%s/tiny.gif", _TestPath()) into sTinyGIF
+   if sTinyGIF is empty then 
+      put url ("binfile:" & TestGetInputFile("tiny.gif")) into sTinyGIF
+   end if
    return sTinyGIF
 end _TinyGIF
 
 -- Utility function that returns the smallest possible valid JPEG image
 local sTinyJPEG
 private function _TinyJPEG
-   if sTinyJPEG is empty then put url format("binfile:%s/tiny.jpg", _TestPath()) into sTinyJPEG
+   if sTinyJPEG is empty then 
+      put url ("binfile:" & TestGetInputFile("tiny.jpg")) into sTinyJPEG
+   end if
    return sTinyJPEG
 end _TinyJPEG
 
@@ -190,9 +194,14 @@ on TestClipboardPrivateKey
    TestAssert "private key is present before external change", \
       "private" is among the keys of the clipboardData
 
-   local tHelperFilename
+   local tHelperFilename, tHelperExtension
+   if the environment is "server" then
+      put "lc" into tHelperExtension
+   else
+      put "livecodescript" into tHelperExtension
+   end if
    set the itemDelimiter to slash
-   put format("%s/_clipboard_private_setter.livecodescript", \
+   put format("%s/_clipboard_private_setter." & tHelperExtension, \
          _TestPath()) into tHelperFilename
    if the environment is "command line" then
       TestRunStack "-ui", tHelperFilename

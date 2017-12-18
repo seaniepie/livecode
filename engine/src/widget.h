@@ -98,6 +98,7 @@ bool MCWidgetPost(MCWidgetRef widget, MCNameRef event, MCProperListRef args);
 void MCWidgetRedrawAll(MCWidgetRef widget);
 void MCWidgetScheduleTimerIn(MCWidgetRef widget, double timeout);
 void MCWidgetCancelTimer(MCWidgetRef widget);
+void MCWidgetTriggerAll(MCWidgetRef widget);
 
 void MCWidgetCopyChildren(MCWidgetRef widget, MCProperListRef& r_children);
 void MCWidgetPlaceWidget(MCWidgetRef widget, MCWidgetRef child, MCWidgetRef relative_to, bool put_below);
@@ -191,6 +192,7 @@ public:
 	virtual void OnOpen();
 	virtual void OnClose();
 	
+    virtual void SetName(MCExecContext& ctxt, MCStringRef p_name);
     virtual void SetDisabled(MCExecContext& ctxt, uint32_t part, bool flag);
     
     void GetKind(MCExecContext& ctxt, MCNameRef& r_kind);

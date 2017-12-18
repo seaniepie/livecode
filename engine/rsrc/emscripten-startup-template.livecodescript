@@ -11,6 +11,8 @@ constant kStartupFolder = "/boot/standalone"
 constant kStartupStackFile = "/boot/standalone/__boot.livecode"
 -- Directory containing auxiliary stack files
 constant kAuxStackFolder = "/boot/auxiliary_stackfiles"
+-- Auxiliary stack file list
+constant kAuxStackListFile = "/boot/auxiliary_stackfiles/auxiliary_stackfiles.txt"
 -- Directory containing extensions
 constant kExtensionFolder = "/boot/extensions"
 -- Extension list file
@@ -19,7 +21,7 @@ constant kExtensionListFile = "/boot/extensions/extensions.txt"
 on startup
    local tError, tFolder, tFile, tByteString, tByte
    local tStackName, tStackData, tStackHashString
-   local tModuleList, tModuleName
+   local tModuleList, tModuleName, tAuxiliaryList
    try
       ----------------------------------------------------------------
       -- Create standard filesystem layout
@@ -32,7 +34,7 @@ on startup
             end if
          end if
       end repeat
-
+      
       -------------------------------------------------------------
       -- Validate engine version
       if the version is not kEngineVersion then
@@ -51,7 +53,7 @@ on startup
          throw the result
       end if
       close file kStartupStackFile
-
+      
       put the sha1Digest of (byte 1 to 1024 of tStackData) into tStackData
       put empty into tStackHashString
       repeat for each byte tByte in tStackData
@@ -63,26 +65,28 @@ on startup
                put tByteString after tStackHashString
          end switch
       end repeat
-
+      
       if kBootHash is not tStackHashString then
-        throw  "Boot stack hash mismatch - standalone is corrupted"
+         throw  "Boot stack hash mismatch - standalone is corrupted"
       end if
       
       -------------------------------------------------------------
       -- Load auxiliary stack files and run their load handlers
-      if there is a directory kAuxStackFolder then
-         set the defaultfolder to kAuxStackFolder
+      
+      if there is a file kAuxStackListFile then
          
-         repeat for each line tFile in the files
-            
+         local tAuxStacks
+         open file kAuxStackListFile for "UTF-8" text read
+         read from file kAuxStackListFile until end
+         put it into tAuxStacks
+         close file kAuxStackListFile
+         
+         set the defaultfolder to kAuxStackFolder
+         repeat for each line tFile in tAuxStacks
             -- This should autoload the file
             put the name of stack tFile into tStackName
-            
-            -- The revLoadLibrary handler should insert the stack into
-            -- the backscripts or frontscripts as necessary.
-            send "revLoadLibrary" to stack tStackName
-            
-         end repeat
+         end repeat  
+         
       end if
       
       -------------------------------------------------------------
@@ -106,6 +110,8 @@ on startup
             end if
          end repeat
       end if
+      
+      @STARTUP_SCRIPT@
       
    catch tError
    end try

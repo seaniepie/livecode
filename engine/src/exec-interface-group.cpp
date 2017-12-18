@@ -238,11 +238,11 @@ void MCGroup::SetHilitedButtonId(MCExecContext& ctxt, uint32_t part, integer_t p
 
 void MCGroup::GetHilitedButtonName(MCExecContext& ctxt, uint32_t part, MCStringRef& r_name)
 {
-	MCButton *bptr = gethilitedbutton(part);
-	if (bptr != NULL)
-		r_name = MCValueRetain(MCNameGetString(bptr->getname()));
-	else
-		r_name = MCValueRetain(kMCEmptyString);
+    MCButton *bptr = gethilitedbutton(part);
+    if (bptr != NULL)
+        bptr -> GetShortName(ctxt, r_name);
+    else
+        r_name = MCValueRetain(kMCEmptyString);
 }
 
 void MCGroup::SetHilitedButtonName(MCExecContext& ctxt, uint32_t part, MCStringRef p_name)
@@ -259,7 +259,7 @@ void MCGroup::SetHilitedButtonName(MCExecContext& ctxt, uint32_t part, MCStringR
                 // Clicking on the button attemps to hilite the option "title,menu,maximize,minimise,close"
                 // but only "title,menu,minimize,maximise,close" exists, returning a nil NameRef
                 MCNameRef t_nameref;
-                t_nameref = MCNameLookup(p_name);
+                t_nameref = MCNameLookupCaseless(p_name);
                 if (t_nameref != nil)
                     bptr->resethilite(part, bptr->hasname(t_nameref));
                 else
@@ -711,7 +711,7 @@ void MCGroup::GetPropList(MCExecContext& ctxt, Properties which, uint32_t part_i
 		{
 			MCAutoStringRef t_property;
             
-			if (which == P_CHILD_CONTROL_NAMES)
+			if (which == P_CHILD_CONTROL_NAMES || which == P_CONTROL_NAMES)
 			{
 				t_object -> GetShortName(ctxt, &t_property);
 				t_success = !ctxt . HasError();

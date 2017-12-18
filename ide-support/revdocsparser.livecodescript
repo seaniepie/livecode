@@ -436,7 +436,7 @@ on revDocsExtractDocBlocks pText, pSource, @rAPIData, @rLibraryData
    put false into tInComment
    put false into tInEntry
    
-   local tFirstWord, tEntryData
+   local tFirstWord, tEntryData, tTrimLine
    local tComment, tData
    local tHandlerData, tPhraseData
    
@@ -449,6 +449,8 @@ on revDocsExtractDocBlocks pText, pSource, @rAPIData, @rLibraryData
    # If the source is an object, then we are parsing script
    local tIsScript
    put there is a pSource into tIsScript
+   
+   local tIsLCIDL = false
    
    repeat for each line tLine in pText
       # Check to see if this is the start of a handler / syntax or a block of comments 
@@ -463,9 +465,16 @@ on revDocsExtractDocBlocks pText, pSource, @rAPIData, @rLibraryData
          put true into tInEntry
          
          switch tFirstWord
+            case "external"
+               put true into tIsLCIDL
+               put "library" into tEntryData["type"]
+               put word 2 to -1 of tLine into tEntryData["name"]
+               put false into tInEntry
+               put true into tEntryData["need_docs"]
+               break
             case "module"
             case "library"
-               put "library" into tEntryData["type"]
+               put tFirstWord into tEntryData["type"]
                put word 2 to -1 of tLine into tEntryData["name"]
                put true into tEntryEnded
                put true into tEntryData["need_docs"]
@@ -532,10 +541,22 @@ on revDocsExtractDocBlocks pText, pSource, @rAPIData, @rLibraryData
                put true into tEntryData["need_docs"]
                break
             case "on"
+               if tIsLCIDL then
+                  put false into tInEntry
+                  break
+               end if
                put "command" into tEntryData["type"]
                put word 2 of tLine into tEntryData["name"]
                put false into tEntryData["need_docs"]
                break
+            case "tail"
+               if not tIsLCIDL then
+                  put false into tInEntry
+                  break
+               end if
+               -- eat tail in lcidl
+               put word 2 of tLine into tFirstWord
+               put word 2 to -1 of tLine into tLine
             case "command"
             case "function"
                if tFirstWord is "function" then
@@ -550,7 +571,8 @@ on revDocsExtractDocBlocks pText, pSource, @rAPIData, @rLibraryData
                # This is not a new entry
                put false into tInEntry
                # Check if this is a new comment block
-               if tFirstWord begins with "/**" then
+               if tFirstWord begins with "/**" and \
+                  not (tFirstWord begins with "/**/") then
                   
                   # If this is script, and this is an initial block of comments,
                   # then treat as the library description
@@ -558,6 +580,11 @@ on revDocsExtractDocBlocks pText, pSource, @rAPIData, @rLibraryData
                      put "library" into tLibraryData["type"]
                      put tComment into tLibraryData["comments"]
                      put the short name of pSource into tLibraryData["name"]
+                  end if
+                  
+                  if tIsLCIDL and tAPIData is empty and tComment is not empty then
+                     put tEntryData into tLibraryData
+                     put tComment into tLibraryData["comments"]
                   end if
                   
                   # Discard any previous comments
@@ -586,6 +613,10 @@ on revDocsExtractDocBlocks pText, pSource, @rAPIData, @rLibraryData
                delete char -1 of tLine
             end if
             
+            if tIsLCIDL then
+               put false into tInEntry
+            end if
+            
             # If there's nothing else on this line, don't add it.
             if word 1 of tLine is empty then
                next repeat
@@ -598,14 +629,27 @@ on revDocsExtractDocBlocks pText, pSource, @rAPIData, @rLibraryData
       end if
       
       # If we are in an entry, add the line to the current data
-      if tInEntry then         
+      if tInEntry then
+         # handle line continuations
+         if char -2 of tData is "\" then
+            delete char -2 to -1 of tData
          # ignore empty lines
-         if tFirstWord is empty then 
-            next repeat
+         else if tFirstWord is empty then
+            if tIsLCIDL then
+               put true into tEntryEnded
+            else
+               next repeat
+            end if
          else if tFirstWord is "end" then
             put true into tEntryEnded
          end if
-         put tLine & return after tData
+         # continuation character can have spaces afterwards [[Bug 19927]]
+         # trim trailing spaces before adding
+         if matchText(tLine, "^(.*\\)\s*$", tTrimLine) then
+            put tTrimLine & return after tData
+         else
+            put tLine & return after tData
+         end if
       end if
       
       # If the entry is ended, convert all the collected data to a structured array
@@ -615,6 +659,7 @@ on revDocsExtractDocBlocks pText, pSource, @rAPIData, @rLibraryData
             switch tEntryData["type"]
                case "library"
                case "widget"
+               case "module"
                   put tComment into tEntryData["comments"]
                   put tEntryData into tLibraryData
                   break
@@ -624,7 +669,11 @@ on revDocsExtractDocBlocks pText, pSource, @rAPIData, @rLibraryData
                   break
                case "function"
                case "command"
-                  revDocsUpdateDocBlocks false, tEntryData["type"], line 1 of tData, tComment, tAPIData
+                  if tIsLCIDL then
+                     revDocsUpdateDocBlocksForLCIDL  tEntryData["name"], tEntryData["type"], tData, tComment, tAPIData
+                  else
+                     revDocsUpdateDocBlocks false, tEntryData["type"], line 1 of tData, tComment, tAPIData
+                  end if
                   break
                case "type"
                   break
@@ -717,11 +766,7 @@ end __revDocsParseDirectoryToLibraryArray
 
 function revDocsFormatInlineComments pDataA, pIsLibrary
    local tComment
-   if pIsLibrary then
-      put "Description:" & return & pDataA["comments"] after tComment
-   else
-      put pDataA["comments"] into tComment
-   end if
+   put pDataA["comments"] into tComment
    
    local tElementsA
    put revDocsExtractElements(tComment) into tElementsA
@@ -867,6 +912,27 @@ function revDocsFormatInlineComments pDataA, pIsLibrary
          put "Name:" && tName & return & return before tEntryDoc
       end if
       
+      if tHasA["Parameters"] is not true and pDataA["params"] is an array then
+         put "Parameters:" & return after tEntryDoc
+         repeat with tParam = 1 to the number of elements of pDataA["params"]
+            put pDataA["params"][tParam]["name"] after tEntryDoc
+            if pDataA["params"][tParam]["type"] is not empty then
+               put " (" & pDataA["params"][tParam]["type"] & ")" after tEntryDoc
+            end if
+            put ":" & return &  pDataA["params"][tParam]["description"] & return & return after tEntryDoc
+         end repeat
+      end if
+      
+      repeat for each item tKey in "The result,Returns,it"
+         if tHasA[tKey] is not true and pDataA[tKey] is an array then
+            put tKey after tEntryDoc
+            if pDataA[tKey]["type"] is not empty then
+               put " (" & pDataA[tKey]["type"] & ")" after tEntryDoc
+            end if
+            put ":" & return &  pDataA[tKey]["description"] & return & return after tEntryDoc
+         end if
+      end repeat
+      
       if tHasA["References"] is not true then
          if pDataA["phrases"] is not empty then
             put "References: " after tEntryDoc
@@ -932,6 +998,8 @@ private function __arrayElementRegex
    return "^ *([\w" & quote & "]+) *(?:\(( *(?:optional |in |out |inout )?<?\w*>?) *\))? *: *(.*)"
 end __arrayElementRegex
 
+constant kAlwaysRecognizeAsElement = "Description"
+
 function revDocsExtractElementsWithRegex pText, pRegex
    local tElementRegex
    put pRegex into tElementRegex
@@ -958,6 +1026,8 @@ function revDocsExtractElementsWithRegex pText, pRegex
    repeat for each line tLine in pText
       # Variables to store regex matches
       local tNextElementName, tParamType, tAfterElement
+      # Variable to keep track of whether element contains multiple lines
+      local tInMultipleLineElement
       
       get word 1 of tLine
       if tInArrayDescription then
@@ -991,7 +1061,16 @@ function revDocsExtractElementsWithRegex pText, pRegex
             add 1 to tInternalBlankLines
          end if
          next repeat
-      else if matchText(tLine, tElementRegex, tNextElementName, tParamType, tAfterElement) then   
+      else if matchText(tLine, tElementRegex, tNextElementName, tParamType, tAfterElement) then
+         --BWM-2017-11-22: [[ Bug 19543 ]] A word (optionaly with something that looks like 
+         --a ParamType) immediately following content should be treated as part of that
+         --content instead of a new element.
+         if word 1 of tAfterElement is empty and tAccumulatedContent is not empty and \
+               tInternalBlankLines is 0 and tInMultipleLineElement and \
+               tNextElementName is not among the items of kAlwaysRecognizeAsElement then
+            put tLine & return after tAccumulatedContent
+            next repeat
+         end if
          if tAccumulatedContent is not empty and tElementCount is 0 then
             add 1 to tElementCount
          end if
@@ -1022,6 +1101,7 @@ function revDocsExtractElementsWithRegex pText, pRegex
          if word 1 of tAfterElement is not empty then
             put word 1 to -1 of tAfterElement & return into tAccumulatedContent
          end if
+         put false into tInMultipleLineElement
       else
          # AL-2015-09-03: [[ Bug 15866 ]] Include internal blank lines in content
          repeat tInternalBlankLines
@@ -1029,6 +1109,7 @@ function revDocsExtractElementsWithRegex pText, pRegex
          end repeat
          put 0 into tInternalBlankLines
          put tLine & return after tAccumulatedContent
+         put true into tInMultipleLineElement
       end if
    end repeat
    
@@ -1064,6 +1145,10 @@ private command __nameToKeyAndType pName, @rKey, @rType
       case "Changes"
       case "Introduced"
       case "Deprecated"
+      case "Edition"
+      case "Version"
+      case "Author"
+      case "SVGIcon"
          put "standard" into rType
          break
       case "Example"
@@ -1076,6 +1161,7 @@ private command __nameToKeyAndType pName, @rKey, @rType
       case "Security"
       case "Synonyms"
       case "Associations"
+      case "Requires"
          put "items" into rType
          break
       case "The result"
@@ -1092,6 +1178,7 @@ private command __nameToKeyAndType pName, @rKey, @rType
          put "references" into rType
          break
       case "References"
+      case "Uses"
          put "references" into rType
          break
       case "Tag"
@@ -1099,7 +1186,12 @@ private command __nameToKeyAndType pName, @rKey, @rType
          put "items" into rType
          break
       case "Name"
+      case "Title"
          put "display name" into rKey
+         put "standard" into rType
+         break
+      case "Library"
+         put "name" into rKey
          put "standard" into rType
          break
       case "Parameters"
@@ -1222,7 +1314,17 @@ function revDocsParseElements pExtractedA, pBlocksA, pFilename
       if tParsedA[tItem] is empty then
          put pBlocksA[tItem] into tParsedA[tItem]
       end if
+      if tParsedA["display name"] is empty then
+         put tParsedA["name"] into tParsedA["display name"]
+      end if
    end repeat
+   
+   if tParsedA["display name"] is empty then
+      put tParsedA["name"] into tParsedA["display name"]
+   end if
+   if tParsedA["description"] is empty then
+      put tParsedA["summary"] into tParsedA["description"]
+   end if
    
    return tParsedA
 end revDocsParseElements
@@ -1259,14 +1361,14 @@ function revDocsParseDocFileToLibraryArray pFile, pLibraryName, pAuthor
 end revDocsParseDocFileToLibraryArray
 
 function revDocsParseDocTextToLibraryArray pFile, pText, pLibraryName, pAuthor
-   local tLibraryA
-   put revDocsParseDocText(pText, pFile) into tLibraryA
+   local tOverridesA
    if pLibraryName is not empty then
-      put pLibraryName into tLibraryA["display name"]
-      put revDocsModifyForUrl(pLibraryName) into tLIbraryA["name"]
+      put pLibraryName into tOverridesA["display name"]
    end if
-   put pAuthor into tLibraryA["author"]
-   return tLibraryA
+   if pAuthor is not empty then
+      put pAuthor into tOverridesA["author"]
+   end if 
+   return revDocsParseDocText(pText, pFile, "", tOverridesA)
 end revDocsParseDocTextToLibraryArray
 
 function revDocsParseDocFile pFile
@@ -1322,7 +1424,12 @@ function revDocsGroupElements pElementsA
    
 end revDocsGroupElements
 
-function revDocsParseDocText pText, pFilename
+-- Elements that when defined at the library level
+-- apply to all docs in the api
+constant kInheritedElements = "author,version,associations,tags,requires,uses"
+-- Elements that should be in the library's actual docs entry
+constant kLibraryEntryElements = "name,display name,summary,description,type,example,references,edition"
+function revDocsParseDocText pText, pFilename, pDefaults, pOverrides
    local tElementsA
    put revDocsExtractElements(pText) into tElementsA
    
@@ -1331,6 +1438,8 @@ function revDocsParseDocText pText, pFilename
    put 0 into tEntryCount
    
    local tParsedA
+   put pDefaults into tParsedA
+   
    # Get library-level data
    local tStartNum
    put 1 into tStartNum
@@ -1339,19 +1448,27 @@ function revDocsParseDocText pText, pFilename
       switch it
          case "Name"
          case empty
-            exit repeat
+            exit repeat     
          case "Library"
-            put tElementsA[tStartNum]["content"] into tParsedA["name"]
+            put tElementsA[tStartNum]["content"] into tParsedA["library"]
             add 1 to tStartNum
             break
+         case "Title"  
+         case "Summary"
          case "Description"
          case "Author"
          case "Type"
+         case "Version"
+         case "Requires" 
+         case "Uses"    
+         case "SVGIcon"   
+         case "Summary"
             // Add top-level tags to all library entries
          case "Tags"
             // Library entries can have examples
          case "Example"
          case "References"
+         case "Edition"
             put tElementsA[tStartNum]["content"] into tParsedA[it]
             add 1 to tStartNum
             break
@@ -1364,50 +1481,44 @@ function revDocsParseDocText pText, pFilename
    local tEntryElementCount
    put 0 into tEntryElementCount
    
-   local tSeenAssociations
-   put false into tSeenAssociations
+   local tSeen
    
-   local tSeenTags
-   put false into tSeenTags
-   
-   local tAssociationsDefault
-   put "Associations" into tAssociationsDefault["name"]
-   put tParsedA["name"] into tAssociationsDefault["content"]
+   put tParsedA["library"] into tParsedA["Associations"]
    repeat with tElementNum = tStartNum to the number of elements in tElementsA
       add 1 to tEntryElementCount
       local tElementA
       put tElementsA[tElementNum] into tElementA
       
       if tElementA["name"] is "Name" then
-         # Add the library name to the associations of this entry
-         if tParsedA["name"] is not empty and tSeenAssociations is not true and tEntryCount is not 0 then
-            put tAssociationsDefault into tEntriesA[tEntryCount]["elements"][tEntryElementCount]
-            add 1 to tEntryElementCount
-         end if
-         if tParsedA["tags"] is not empty and tSeenTags is not true and tEntryCount is not 0 then
-            put "Tags" into tEntriesA[tEntryCount]["elements"][tEntryElementCount]["name"]
-            put tParsedA["tags"] into tEntriesA[tEntryCount]["elements"][tEntryElementCount]["content"]
-            add 1 to tEntryElementCount
-         end if
+         repeat for each key tKey in tParsedA
+            if not tSeen[tKey] and \
+                  tParsedA[tKey] is not empty and \
+                  tKey is among the items of kInheritedElements and \
+                  tEntryCount is not 0 then
+               put tKey into tEntriesA[tEntryCount]["elements"][tEntryElementCount]["name"]
+               put tParsedA[tKey] into tEntriesA[tEntryCount]["elements"][tEntryElementCount]["content"]
+               add 1 to tEntryElementCount
+            end if
+         end repeat
+         
          add 1 to tEntryCount
          put 1 into tEntryElementCount
-         put false into tSeenAssociations   
-         put false into tSeenTags
+         delete variable tSeen 
       end if
+      
+      put true into tSeen[tElementA["name"]]
       
       if tElementA["name"] is "Syntax" then
          __updateParamsFromSyntaxLine tElementA["content"], tEntriesA[tEntryCount]["params"]
       end if
       
       if tElementA["name"] is "Associations" then
-         put true into tSeenAssociations
-         if tParsedA["name"] is not empty and tParsedA["name"] is not among the items of tElementA["content"] then
-            put tParsedA["name"] & comma before tElementA["content"]
+         if tParsedA["library"] is not empty and tParsedA["library"] is not among the items of tElementA["content"] then
+            put tParsedA["library"] & comma before tElementA["content"]
          end if
       end if
       
       if tElementA["name"] is "Tags" and tParsedA["tags"] is not empty then
-         put true into tSeenTags
          put tParsedA["tags"] & comma before tElementA["content"]
       end if
       
@@ -1415,35 +1526,58 @@ function revDocsParseDocText pText, pFilename
    end repeat
    
    // Add association and tag to the last element, if they were not found
-   if tParsedA["name"] is not empty and tSeenAssociations is not true and tEntryCount is not 0 then
-      add 1 to tEntryElementCount
-      put tAssociationsDefault into tEntriesA[tEntryCount]["elements"][tEntryElementCount]
-   end if
-   if tParsedA["tags"] is not empty and tSeenTags is not true and tEntryCount is not 0 then
-      add 1 to tEntryElementCount
-      put "Tags" into tEntriesA[tEntryCount]["elements"][tEntryElementCount]["name"]
-      put tParsedA["tags"] into tEntriesA[tEntryCount]["elements"][tEntryElementCount]["content"]
-   end if
-   
-   // Add a library entry
-   local tLibraryElements
-   local tCount
-   put 1 into tCount
-   add 1 to tEntryCount
-   
-   repeat for each item tItem in "name,description,author,type,example,references"
-      if tParsedA[tItem] is not empty then
-         put tItem into tEntriesA[tEntryCount]["elements"][tCount]["name"]
-         put tParsedA[tItem] into tEntriesA[tEntryCount]["elements"][tCount]["content"]
-         add 1 to tCount
+   repeat for each key tKey in tParsedA
+      if not tSeen[tKey] and \
+            tParsedA[tKey] is not empty and \
+            tKey is among the items of kInheritedElements and \
+            tEntryCount is not 0 then
+         add 1 to tEntryElementCount
+         put tKey into tEntriesA[tEntryCount]["elements"][tEntryElementCount]["name"]
+         put tParsedA[tKey] into tEntriesA[tEntryCount]["elements"][tEntryElementCount]["content"]
       end if
    end repeat
    
+   // Add a library entry, if there was one
+   local tHasLibraryEntry, tLibraryA
+   put tParsedA["library"] is not empty into tHasLibraryEntry
+   if tHasLibraryEntry then
+      local tLibraryElementsA
+      local tLibCount
+      put 1 into tLibCount
+      add 1 to tEntryCount
+      
+      -- Use kLibraryEntryElements to determine what library-level docs actually
+      -- appear in the library entry in the dictionary. Everything else is 
+      -- essentially metadata
+      repeat for each key tKey in tParsedA
+         if tParsedA[tKey] is not empty then
+            put tKey into tLibraryElementsA[tLibCount]["name"]            
+            put tParsedA[tKey] into tLibraryElementsA[tLibCount]["content"]
+            add 1 to tLibCount
+         end if
+      end repeat
+      
+      put revDocsParseElements(tLibraryElementsA, empty, pFilename) into tLibraryA
+   end if
+   
    repeat for each key tKey in tEntriesA
-      put revDocsParseElements(tEntriesA[tKey]["elements"], tEntriesA[tKey], pFilename) into tParsedA["doc"][tKey]
+      put revDocsParseElements(tEntriesA[tKey]["elements"], tEntriesA[tKey], pFilename) into tLibraryA["doc"][tKey]
    end repeat
    
-   return tParsedA
+   if tHasLibraryEntry then  
+      repeat for each key tLibElementKey in tLibraryA
+         if tLibElementKey is among the items of kLibraryEntryElements then
+            put tLibraryA[tLibElementKey] into tLibraryA["doc"][0][tLibElementKey]
+         end if
+      end repeat 
+      
+      // Use overrides if specified
+      repeat for each key tKey in pOverrides
+         put pOverrides[tKey] into tLibraryA["doc"][0][tKey]
+         put pOverrides[tKey] into tLibraryA[tKey]
+      end repeat
+   end if
+   return tLibraryA
 end revDocsParseDocText
 
 /*
@@ -1671,6 +1805,89 @@ command revDocsUpdateDocBlocks pModular, pType, pLine, pComment, @xDataA
    put "handler" into xDataA[tEntryName]["kind"]
 end revDocsUpdateDocBlocks
 
+command revDocsUpdateDocBlocksForLCIDL pEntryName, pType, pData, pComment, @xDataA
+   if pComment is empty then
+      exit revDocsUpdateDocBlocksForLCIDL
+   end if
+   
+   local tSyntax
+   local tParamArray
+   local tParamsSyntax
+   local tValue
+   
+   local tParam
+   repeat for each line tLine in line 2 to -1 of pData
+      if the number of words of tLine is 0 then
+         next repeat
+      end if
+      
+      split tLine by "//"
+      
+      if word 1 of tLine[1] is not "return" then
+         local tOptional
+         put word 1 of tLine[1] is "optional" into tOptional
+         
+         if tOptional then
+            delete word 1 of tLine[1]
+         end if
+         put word 2 of tLine[1] into tParam
+         
+         if tOptional then
+            put "[<" & tParam & ">], " after tParamsSyntax
+         else
+            put "<" & tParam & ">, " after tParamsSyntax
+         end if
+         
+         get the number of elements of tParamArray + 1
+         
+         put "out" is in word 1 of tLine[1] into tParamArray[it]["refparam"]
+         put tParam into tParamArray[it]["name"]
+         
+         if word 4 of tLine[1] contains "string" then
+            put "string" into tParamArray[it]["type"]
+         else if word 4 of tLine[1] contains "data" then
+            put "data" into tParamArray[it]["type"]
+         else
+            put word 4 of tLine[1] into tParamArray[it]["type"]
+         end if
+         
+         if tOptional then
+            put "optional " before tParamArray[it]["type"]
+         end if
+         put word 1 to -1 of tLine[2] into tParamArray[it]["description"]
+      else
+         put word 2 of tLine[1] into tValue["type"]
+         put word 1 to -1 of tLine[2] into tValue["description"] 
+      end if
+   end repeat
+   delete char -2 to -1 of tParamsSyntax
+   
+   if pType is "function" then
+      put "(" before tParamsSyntax
+      put ")" after tParamsSyntax
+      put pEntryName & tParamsSyntax into tSyntax
+   else
+      put pEntryName && tParamsSyntax into tSyntax
+   end if
+   
+   put tSyntax into xDataA[pEntryName]["syntax"][1]
+   put tParamArray into xDataA[pEntryName]["params"]
+   put pType into xDataA[pEntryName]["type"]
+   put pEntryName into xDataA[pEntryName]["name"]
+   if pType is "function" then
+      put tValue into xDataA[pEntryName]["return value"]
+   else
+      put tValue into xDataA[pEntryName]["the result"]
+   end if
+   put empty into tValue
+   
+   # Output the comments that preceded this function definition
+   put pComment into xDataA[pEntryName]["comments"]
+   
+   # Distinguish from syntax
+   put "handler" into xDataA[pEntryName]["kind"]
+end revDocsUpdateDocBlocksForLCIDL
+
 function revDocsParseReferences pDescription
    local tReferences
    
@@ -1878,6 +2095,9 @@ function revDocsParseDescriptionOfEnum pDescription
          put word 1 to -1 of tValue into tArray["enum"][tCount]["value"]
          put word 1 to -1 of tDescription into tArray["enum"][tCount]["description"]
          add 1 to tCount
+         put true into tInEnum
+      else if tInEnum then
+         put space & word 1 to -1 of tLine after tArray["enum"][tCount-1]["description"]
       else
          put tLine & return after tOutput
       end if
@@ -1902,26 +2122,44 @@ private function __tabs pNum
    return tOutput
 end __tabs
 
-function revDocsFormatLibraryArrayAsJSON pLibraryA
+function revDocsFormatLibraryDocArrayAsJSON pLibraryA
+   local tJSON, tCount, tDocA
+   put pLibraryA["doc"] into tDocA
+   repeat for each element tDoc in tDocA
+      local tId
+      add 1 to tCount
+      put pLibraryA["name"] & "-" & tCount into tId
+      local tDocJson
+      put revDocsFormatLibraryDataAsJSON(tId, tDoc, pLibraryA) into tDocJson 
+      if tDocJson is not empty then
+         put tDocJson & comma after tJSON
+      end if
+   end repeat
+   delete the last char of tJSON
+   return tJSON
+end revDocsFormatLibraryDocArrayAsJSON
+
+function revDocsCreateAPIJSON pLibraryTitle, pLibraryName, pAuthor, pDocContentJSON
    local tJSON
    put "{" after tJSON
-   put return & __tabs(2) & keyValue("display name",pLibraryA["display name"]) & comma after tJSON
-   put return & __tabs(2) & keyValue("name",pLibraryA["name"]) & comma after tJSON
-   put return & __tabs(2) & keyValue("author",pLibraryA["author"]) & comma after tJSON
-   put return & __tabs(2) & escape("doc") & ":[" after tJSON
-   
-   local tCount
-   put the number of elements in pLibraryA["doc"] into tCount
-   
-   if tCount is not 0 then
-      repeat with tID = 1 to tCount
-         put revDocsFormatLibraryDataAsJSON(tID, pLibraryA["doc"][tID]) & comma after tJSON
-      end repeat
-      delete the last char of tJSON
+   put return & __tabs(2) & keyValue("display name",pLibraryTitle) & comma after tJSON
+   put return & __tabs(2) & keyValue("name",pLibraryName) & comma after tJSON
+   if pAuthor is not empty then
+      put return & __tabs(2) & keyValue("author",pAuthor) & comma after tJSON
    end if
+   put return & __tabs(2) & escape("doc") & ":[" after tJSON
+   put pDocContentJSON after tJSON
    put "]" after tJSON
    put return & tab & "}" after tJSON
    return tJSON
+end revDocsCreateAPIJSON
+
+function revDocsFormatLibraryArrayAsJSON pLibraryA
+   local tDocContent
+   put revDocsFormatLibraryDocArrayAsJSON(pLibraryA["name"], pLibraryA["doc"]) \
+         into tDocContent
+   return revDocsCreateAPIJSON(pLibraryA["display name"], pLibraryA["name"], \
+         pLibraryA["author"], tDocContent)
 end revDocsFormatLibraryArrayAsJSON
 
 private function __revDocsParamIsDefinedType pType
@@ -2210,87 +2448,98 @@ end __revDocsFormatCustomArrayAsJSON
 Format the library array data as a JSON array as needed by the docs viewer
 */
 
-function revDocsFormatLibraryDataAsJSON pID, pLibraryDataA
+function revDocsFormatLibraryDataAsJSON pID, pDocDataA, pLibraryDataA
    local tJSON
    put "{" & return into tJSON
    
-   if pLibraryDataA["display name"] is empty then
-      put pLibraryDataA["name"] into pLibraryDataA["display name"]
-   else if pLibraryDataA["name"] is empty then
-      put pLibraryDataA["display name"] into pLibraryDataA["name"]
-   else
-      throw "No name parsed"
+   if pDocDataA["display name"] is empty then
+      put pDocDataA["name"] into pDocDataA["display name"]
+   else if pDocDataA["name"] is empty then
+      put pDocDataA["display name"] into pDocDataA["name"]
    end if
+   
+   if pDocDataA["display name"] is empty and \
+         pDocDataA["name"] is empty then
+      logError "No doc name found for" && pID
+      return empty
+   end if
+   
    # The 'name' should be urlencoded
-   put revDocsModifyForURL(pLibraryDataA["name"]) into pLibraryDataA["name"]
+   put revDocsModifyForURL(pDocDataA["name"]) into pDocDataA["name"]
    
    # ID
    put outputElement("id", pID, 3) after tJSON
    
    # Name
-   put outputArrayElement("name", pLibraryDataA, 3) after tJSON
+   put outputArrayElement("name", pDocDataA, 3) after tJSON
    
    # Display Name
-   put outputArrayElement("display name", pLibraryDataA, 3) after tJSON
+   put outputArrayElement("display name", pDocDataA, 3) after tJSON
+   
+   # Library Name
+   put outputElement("library", pLibraryDataA["name"], 3) after tJSON
    
    # Type
-   put outputArrayElement("type", pLibraryDataA, 3, true) after tJSON
+   put outputArrayElement("type", pDocDataA, 3, true) after tJSON
    
    # Syntax
-   put __revDocsFormatCustomArrayAsJSON("syntax", pLibraryDataA) after tJSON
+   put __revDocsFormatCustomArrayAsJSON("syntax", pDocDataA) after tJSON
    
    # Display syntax
-   if pLibraryDataA["syntax"] is not empty then
-      put line 1 of pLibraryDataA["syntax"][1] into pLibraryDataA["display syntax"][1]
+   if pDocDataA["syntax"] is not empty then
+      put line 1 of pDocDataA["syntax"][1] into pDocDataA["display syntax"][1]
    else
-      put pLibraryDataA["display name"] into pLibraryDataA["display syntax"][1]
+      put pDocDataA["display name"] into pDocDataA["display syntax"][1]
    end if
-   put __revDocsFormatCustomArrayAsJSON("display syntax", pLibraryDataA) after tJSON
+   put __revDocsFormatCustomArrayAsJSON("display syntax", pDocDataA) after tJSON
    
    # Synonyms
-   put revDocsItemListToJSONArray(pLibraryDataA, "synonyms") after tJSON
+   put revDocsItemListToJSONArray(pDocDataA, "synonyms") after tJSON
    
    # Associations
-   put revDocsItemListToJSONArray(pLibraryDataA, "associations") after tJSON
+   put revDocsItemListToJSONArray(pDocDataA, "associations") after tJSON
    
    # Summary
-   put outputElementIfExists("summary", pLibraryDataA, 3) after tJSON
+   put outputElementIfExists("summary", pDocDataA, 3) after tJSON
+   
+   # Edition
+   put outputElementIfExists("edition", pDocDataA, 3) after tJSON
    
    # Introduced
-   put outputElementIfExists("introduced", pLibraryDataA, 3) after tJSON
+   put outputElementIfExists("introduced", pDocDataA, 3) after tJSON
    
    # Deprecated
-   put outputElementIfExists("deprecated", pLibraryDataA, 3) after tJSON
+   put outputElementIfExists("deprecated", pDocDataA, 3) after tJSON
    
    # OS
-   put revDocsItemListToJSONArray(pLibraryDataA, "OS") after tJSON
+   put revDocsItemListToJSONArray(pDocDataA, "OS") after tJSON
    
    # Platforms
-   put revDocsItemListToJSONArray(pLibraryDataA, "platforms") after tJSON
+   put revDocsItemListToJSONArray(pDocDataA, "platforms") after tJSON
    
    # Security
-   put revDocsItemListToJSONArray(pLibraryDataA, "security") after tJSON
+   put revDocsItemListToJSONArray(pDocDataA, "security") after tJSON
    
    # Parameters
-   put __revDocsFormatCustomArrayAsJSON("params", pLibraryDataA) after tJSON
+   put __revDocsFormatCustomArrayAsJSON("params", pDocDataA) after tJSON
    
    # Example
-   put __revDocsFormatCustomArrayAsJSON("example", pLibraryDataA) after tJSON
+   put __revDocsFormatCustomArrayAsJSON("example", pDocDataA) after tJSON
    
    # Value
-   put __revDocsFormatCustomArrayAsJSON("value", pLibraryDataA) after tJSON
+   put __revDocsFormatCustomArrayAsJSON("value", pDocDataA) after tJSON
    
    # Description
-   put outputElementIfExists("description", pLibraryDataA, 3) after tJSON
+   put outputElementIfExists("description", pDocDataA, 3) after tJSON
    
    # References
-   put __revDocsFormatReferencesArrayAsJSON(pLibraryDataA["references"]) after tJSON
+   put __revDocsFormatReferencesArrayAsJSON(pDocDataA["references"]) after tJSON
    
    # Tags
-   put revDocsItemListToJSONArray(pLibraryDataA, "tags") after tJSON
+   put revDocsItemListToJSONArray(pDocDataA, "tags") after tJSON
    
    # Changes
-   put outputElementIfExists("changes", pLibraryDataA, 3) after tJSON
+   put outputElementIfExists("changes", pDocDataA, 3) after tJSON
    
    delete char -2 to -1 of tJSON
    put return & tab & tab & "}" after tJSON
@@ -2321,7 +2570,7 @@ on revDocsOpenAPIDatabase pFolder
    return tConnection
 end revDocsOpenAPIDatabase
 
-on revDocsUpdateDatabase pConnection, pLibraryA
+on revDocsUpdateDatabase pConnection, pAPI, pLibraryA
    if pConnection is empty then
       return "no database connection"
    end if
@@ -2329,40 +2578,31 @@ on revDocsUpdateDatabase pConnection, pLibraryA
    local tSQL, tResult
    
    # Create the libraries table. This might already exist, so do it unchecked.
-   put "CREATE TABLE libraries(library_id integer primary key, library_name text, author text, type text)" into tSQL
+   put "CREATE TABLE apis(api_id integer primary key, api_name text)" into tSQL
    revExecuteSQL pConnection, tSQL
    
-   local tName
-   put pLibraryA["name"] into tName
-   if tName is empty then
-      put revDocsModifyForURL(pLibraryA["display name"]) into tName
-   end if 
-   
-   local tAuthor
-   put pLibraryA["author"] into tAuthor
-   
-   local tType
-   put pLibraryA["type"] into tType
-   
    # Try an UPDATE first. If this fails, the entry might not exist already, so try an INSERT.
-   put "UPDATE libraries SET author = :1, type = :2 WHERE library_name = :3" into tSQL
-   revExecuteSQL pConnection, tSQL, "tAuthor", "tType", "tName" 
+   put "UPDATE apis SET api_name = :1 WHERE api_name = :1" into tSQL
+   revExecuteSQL pConnection, tSQL, "pAPI" 
    put the result into tResult
    if tResult is not a number or tResult is 0 then
-      put "INSERT into libraries VALUES(NULL, :1, :2, :3)" into tSQL
-      revExecuteSQL pConnection, tSQL, "tName", "tAuthor", "tType"
+      put "INSERT into apis VALUES(NULL, :1)" into tSQL
+      revExecuteSQL pConnection, tSQL, "pAPI"
       put the result into tResult
    end if
    
    if tResult is not a number then
-      return "unable to open table 'libraries'" & return & tResult
+      return "unable to open table 'apis'" & return & tResult
    end if
    
    # Create the library data table. This might already exist, so do it unchecked.
-   put "CREATE TABLE dictionary_data(library_id integer, entry_name text, entry_type text, entry_data blob)" into tSQL
+   put "CREATE TABLE dictionary_data(api_id integer, library_name text, entry_name text, entry_type text, entry_data blob)" into tSQL
    revExecuteSQL pConnection, tSQL
    
-   revDocsUpdateLibrary pConnection, tName, pLibraryA["doc"]
+   local tName
+   put pLibraryA["display name"] into tName
+   
+   revDocsUpdateLibrary pConnection, pAPI, tName, pLibraryA["doc"]
    if the result is not empty then
       return "unable to update data for library" && tName & return & the result
    end if
@@ -2370,35 +2610,33 @@ on revDocsUpdateDatabase pConnection, pLibraryA
    return empty
 end revDocsUpdateDatabase
 
-on revDocsUpdateLibrary pConnection, pName, pDocDataA
-   # Find the library id
-   local tSQL, tLibraryID
-   put "SELECT library_id FROM libraries WHERE library_name = :1" into tSQL
-   put revDataFromQuery(comma, return, pConnection, tSQL, "pName") into tLibraryID
+on revDocsUpdateLibrary pConnection, pAPI, pName, pDocDataA
+   # Find the API id
+   local tSQL, tAPIID
+   put "SELECT api_id FROM apis WHERE api_name = :1" into tSQL
+   put revDataFromQuery(comma, return, pConnection, tSQL, "pAPI") into tAPIID
    
    if the result is not a number then
-      return "error finding library id for" && pName & return & the result
+      return "error finding api id for" && pAPI & return & the result
    end if
    
    local tDocA, tDocName
    repeat for each element tDocA in pDocDataA
-      put tDocA["name"] into tDocName
-      if tDocName is empty then
-         put revDocsModifyForURL(tDocA["display name"]) into tDocName
-      end if 
-      
+      put tDocA["display name"] into tDocName
+
       local tType
       put tDocA["type"] into tType
       
       local tEncodedData, tResult
       put arrayEncode(tDocA) into tEncodedData
       # Try an UPDATE first. If this fails, the entry might not exist already, so try an INSERT.
-      put "UPDATE dictionary_data SET entry_data = :1 WHERE entry_name = :2 AND entry_type = :3 AND library_id = :4" into tSQL
-      revExecuteSQL pConnection, tSQL, "*btEncodedData", "tDocName", "tType", "tLibraryID"
+      put "UPDATE dictionary_data SET entry_data = :1 WHERE library_name = :2" && \
+            "AND entry_name = :3 AND entry_type = :4 AND api_id = :5" into tSQL
+      revExecuteSQL pConnection, tSQL, "*btEncodedData", "pName", "tDocName", "tType", "tAPIID"
       put the result into tResult
       if tResult is not a number or tResult is 0 then
-         put "INSERT into dictionary_data VALUES(:1, :2, :3, :4)" into tSQL
-         revExecuteSQL pConnection, tSQL, "tLibraryID", "tDocName", "tType", "*btEncodedData"
+         put "INSERT into dictionary_data VALUES(:1, :2, :3, :4, :5)" into tSQL
+         revExecuteSQL pConnection, tSQL, "tAPIID", "pName", "tDocName", "tType", "*btEncodedData"
          put the result into tResult
       end if
       
@@ -2409,29 +2647,22 @@ on revDocsUpdateLibrary pConnection, pName, pDocDataA
    return empty
 end revDocsUpdateLibrary
 
-on revDocsRemoveLibrary pConnection, pName
+on revDocsRemoveLibrary pConnection, pAPI, pName
    # Find the library id
-   local tSQL, tLibraryID
-   put "SELECT library_id FROM libraries WHERE library_name = :1" into tSQL
-   put revDataFromQuery(comma, return, pConnection, tSQL, pName) into tLibraryID
+   local tSQL, tAPIID
+   put "SELECT api_id FROM apis WHERE api_name = :1" into tSQL
+   put revDataFromQuery(comma, return, pConnection, tSQL, pAPI) into tAPIID
    
    if the result is not a number then
-      return "error finding library id for" && pName & return & the result
+      return "error finding api id for" && pAPI & return & the result
    end if
    
    # Delete all entries associated with this library
-   put "DELETE * FROM dictionary_data WHERE library_id = :1" into tSQL
-   revExecuteSQL pConnection, tSQL, "tLibraryID"
+   put "DELETE * FROM dictionary_data WHERE api_id = :1 AND library_name = :2" into tSQL
+   revExecuteSQL pConnection, tSQL, "tAPIID", "pName"
    if the result is not a number then
       return "unable to delete data for" && pName & return & the result
    end if
-   
-   # Delete the library entry from the libraries table
-   put "DELETE * FROM libraries WHERE library_name = :1" into tSQL
-   revExecuteSQL pConnection, tSQL, pName 
-   if the result is not a number then
-      return "unable to remove library" && pName && "from libraries table" & return & the result
-   end if	
    
    return empty
 end revDocsRemoveLibrary
@@ -2673,3 +2904,8 @@ function revDocsFormatGuideDataAsJSON pGuideDataA
    put tab & escape("data") & ":" & escape(pGuideDataA["data"], true)  after tGuideData
    return tGuideData
 end revDocsFormatGuideDataAsJSON
+
+
+on pushNotificationRegistrationError pErrorMessage
+   
+end pushNotificationRegistrationError

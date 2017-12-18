@@ -20,22 +20,10 @@
 	},
 	
 	'targets':
-	[
+	[	
 		{
-			'target_name': 'extract_docs',
+			'target_name': 'descriptify_environment_stack',
 			'type': 'none',
-			
-			'all_dependent_settings':
-			{
-				'variables':
-				{
-					'dist_aux_files':
-					[
-						# Gyp will only use a recursive xcopy on Windows if the path ends with '/'
-						'<(PRODUCT_DIR)/extracted_docs/',
-					],
-				},
-			},
 			
 			'variables':
 			{
@@ -61,81 +49,25 @@
 					],
 				],
 			},
-			
-			'dependencies':
-			[
-				# Requires a working LiveCode engine
-				'server',
-			],
 			
 			'sources':
 			[
-				'../extensions/script-libraries/oauth2/oauth2.livecodescript',
-				'../extensions/script-libraries/getopt/getopt.livecodescript',
-				'../extensions/script-libraries/mime/mime.livecodescript',
-				'../extensions/script-libraries/dropbox/dropbox.livecodescript',
-				'../extensions/script-libraries/diff/diff.livecodescript',
-				'../extensions/script-libraries/messageauthentication/messageauthentication.livecodescript',
+				'src/environment.livecode',
+				'../ide-support/revliburl.livecodescript',
+				'src/environment/accountsignupcardbehavior.livecodescript',
+				'src/environment/automaticactivationactivationgroupbehavior.livecodescript',
+				'src/environment/automaticactivationactivationinputpassfieldbehavior.livecodescript',
+				'src/environment/automaticactivationbackgroundgroupbehavior.livecodescript',
+				'src/environment/automaticactivationcardbehavior.livecodescript',
+				'src/environment/automaticactivationprocessinggroupbehavior.livecodescript',
+				'src/environment/getstartedgetstartedstatusgroupbehavior.livecodescript',
+				'src/environment/resourcesresourcesloadergroupbehavior.livecodescript',
+				'src/environment/resourcesresourcespushbuttonbehaviorbuttonbehavior.livecodescript',
+				'src/environment/stackbehavior.livecodescript',
+				'src/environment/unlicensedactivatefieldbehavior.livecodescript',
+				'src/environment/unlicensedbkgndbehavior.livecodescript',
+				'src/environment/unlicensedbuynowbuttonbehavior.livecodescript',
 			],
-			
-			'actions':
-			[
-				{
-					'action_name': 'extract_docs_from_stacks',
-					'message': 'Extracting docs from stacks',
-					
-					'inputs':
-					[
-						'../util/extract-docs.livecodescript',
-						'../ide-support/revdocsparser.livecodescript',
-						'<@(_sources)',
-					],
-					
-					'outputs':
-					[
-						'<(PRODUCT_DIR)/extracted_docs',
-					],
-					
-					'action':
-					[
-						'<(engine)',
-						'../util/extract-docs.livecodescript',
-						'../ide-support/revdocsparser.livecodescript',
-						'<(PRODUCT_DIR)/extracted_docs',
-						'<@(_sources)',
-					],
-				},
-			],
-		},
-		
-		{
-			'target_name': 'update_liburl_script',
-			'type': 'none',
-			
-			'variables':
-			{
-				'conditions':
-				[
-					[
-						'host_os == "linux"',
-						{
-							'engine': '<(PRODUCT_DIR)/server-community',
-						},
-					],
-					[
-						'host_os == "mac"',
-						{
-							'engine': '<(PRODUCT_DIR)/server-community',
-						},
-					],
-					[
-						'host_os == "win"',
-						{
-							'engine': '<(PRODUCT_DIR)/server-community.exe',
-						},
-					],
-				],
-			},
 			
 			'dependencies':
 			[
@@ -146,28 +78,27 @@
 			'actions':
 			[
 				{
-					'action_name': 'update_liburl',
-					'message': 'Updating environment stack liburl script',
+					'action_name': 'descriptify_environment_stack',
+					'message': 'De-scriptifying the environment stack',
 					
 					'inputs':
 					[
-						'src/Environment.rev',
-						'../ide-support/revliburl.livecodescript',
-						'../util/update-liburl.livecodescript',
+						'../util/descriptify_stack.livecodescript',
+						'<@(_sources)',
 					],
 					
 					'outputs':
 					[
-						'<(SHARED_INTERMEDIATE_DIR)/src/Environment_LibURL.rev',
+						'<(SHARED_INTERMEDIATE_DIR)/src/environment_descriptified.livecode',
 					],
 					
 					'action':
 					[
 						'<(engine)',
-						'../util/update-liburl.livecodescript',
-						'src/Environment.rev',
-						'../ide-support/revliburl.livecodescript',
-						'<(SHARED_INTERMEDIATE_DIR)/src/Environment_LibURL.rev',
+						'../util/descriptify_stack.livecodescript',
+						'<(SHARED_INTERMEDIATE_DIR)/src/environment_descriptified.livecode',
+						'<@(_sources)',
+						
 					],
 				},
 			],
@@ -179,7 +110,7 @@
 			
 			'dependencies':
 			[
-				'update_liburl_script',
+				'descriptify_environment_stack',
 			],
 			
 			'actions':
@@ -189,7 +120,7 @@
 					'inputs':
 					[
 						'../util/compress_data.pl',
-						'<(SHARED_INTERMEDIATE_DIR)/src/Environment_LibURL.rev',
+						'<(SHARED_INTERMEDIATE_DIR)/src/environment_descriptified.livecode',
 					],
 					'outputs':
 					[
@@ -200,7 +131,7 @@
 					[
 						'<@(perl)',
 						'../util/compress_data.pl',
-						'src/Environment.rev',
+						'<(SHARED_INTERMEDIATE_DIR)/src/environment_descriptified.livecode',
 						'<@(_outputs)',
 						# Really nasty hack to prevent this from being treated as a path
 						'$(this_is_an_undefined_variable)MCstartupstack',
@@ -691,7 +622,6 @@
 				'kernel-development.gyp:kernel-development',
 				'encode_environment_stack',
 				'engine-common.gyp:security-community',
-				'extract_docs',
 			],
 			
 			'sources':
@@ -981,6 +911,8 @@
 									'src/em-system.js',
 									'src/em-url.js',
 									'src/em-standalone.js',
+									'src/em-liburl.js',
+									'src/em-dc.js',
 								],
 
 								'outputs':
@@ -1013,6 +945,8 @@
 									'src/em-system.js',
 									'src/em-url.js',
 									'src/em-standalone.js',
+									'src/em-liburl.js',
+									'src/em-dc.js',
 								],
 							},
 						],

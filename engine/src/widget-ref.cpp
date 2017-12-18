@@ -654,6 +654,22 @@ void MCWidgetBase::RedrawRect(MCGRectangle *p_area)
     MCWidgetAsBase(t_owner) -> RedrawRect(p_area);
 }
 
+void MCWidgetBase::TriggerAll()
+{
+    if (IsRoot())
+    {
+        GetHost() -> signallisteners(P_CUSTOM);
+        return;
+    }
+    
+    MCWidgetRef t_owner;
+    t_owner = GetOwner();
+    if (t_owner == nil)
+        return;
+    
+    MCWidgetAsBase(t_owner) -> TriggerAll();
+}
+
 bool MCWidgetBase::CopyChildren(MCProperListRef& r_children)
 {
     if (m_children == nil)
@@ -833,7 +849,7 @@ bool MCWidgetBase::DoDispatch(MCNameRef p_event, MCValueRef *x_args, uindex_t p_
 bool MCWidgetBase::Dispatch(MCNameRef p_event, MCValueRef *x_args, uindex_t p_arg_count, MCValueRef *r_result)
 {
 	MCStack *t_this_stack;
-	MCStackHandle t_old_defaultstack = MCdefaultstackptr->GetHandle();
+	MCStackHandle t_old_defaultstack = MCdefaultstackptr;
 	
 	// Preserve the host ptr we get across the dispatch so that
 	// we definitely return things to the way they were.
@@ -1362,6 +1378,11 @@ bool MCWidgetSetAnnotation(MCWidgetRef self, MCNameRef p_annotation, MCValueRef 
 void MCWidgetRedrawAll(MCWidgetRef self)
 {
     return MCWidgetAsBase(self) -> RedrawRect(nil);
+}
+
+void MCWidgetTriggerAll(MCWidgetRef self)
+{
+    return MCWidgetAsBase(self) -> TriggerAll();
 }
 
 bool MCWidgetPost(MCWidgetRef self, MCNameRef p_event, MCProperListRef p_args)

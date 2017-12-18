@@ -39,6 +39,7 @@
 			'dependencies':
 			[
 				'../prebuilt/libicu.gyp:libicu',
+				'../prebuilt/libicu.gyp:encode_minimal_icu_data',
 				'../thirdparty/libffi/libffi.gyp:libffi',
 				'../thirdparty/libz/libz.gyp:libz',
 			],
@@ -78,7 +79,8 @@
 				
 				'src/foundation-array.cpp',
 				'src/foundation-bidi.cpp',
-				'src/foundation-chunk.cpp',
+                'src/foundation-chunk.cpp',
+                'src/foundation-cf.cpp',
 				'src/foundation-core.cpp',
 				'src/foundation-custom.cpp',
 				'src/foundation-data.cpp',
@@ -101,7 +103,6 @@
 				'src/foundation-set.cpp',
 				'src/foundation-stream.cpp',
 				'src/foundation-string.cpp',
-				'src/foundation-string-cf.cpp',
                 'src/foundation-string-native.cpp.h',
 				'src/foundation-text.cpp',
 				'src/foundation-typeconvert.cpp',
@@ -127,6 +128,8 @@
                 'src/system-library-w32.hpp',
 				'src/system-random.cpp',
 				'src/system-stream.cpp',
+				
+				'<(SHARED_INTERMEDIATE_DIR)/src/icudata-minimal.cpp',
 			],
 
 			'actions':
@@ -159,9 +162,15 @@
 				[
 					'OS != "mac" and OS != "ios"',
 					{
+                        'sources':
+                        [
+                            'src/foundation-objc-dummy.cpp',
+                        ],
+                    
 						'sources!':
 						[
-							'src/foundation-string-cf.cpp',
+							'src/foundation-cf.cpp',
+                            'src/foundation-objc.mm',
 						],
 					},
 				],

@@ -66,8 +66,8 @@ along with LiveCode.  If not see <http://www.gnu.org/licenses/>.  */
 // __LITTLE_ENDIAN__ will be defined if the target processor uses BE byte-order.
 #undef __BIG_ENDIAN__
 
-// __I386__ will be defined if the target processor is i386.
-#undef __I386__
+// __i386__ will be defined if the target processor is i386.
+#undef __i386__
 // __X86_64__ will be defined if the target processor is x86-64.
 #undef __X86_64__
 // __PPC__ will be defined if the target processor is PowerPC.
@@ -124,7 +124,7 @@ along with LiveCode.  If not see <http://www.gnu.org/licenses/>.  */
 #if defined(_M_IX86)
 #define __32_BIT__ 1 
 #define __LITTLE_ENDIAN__ 1
-#define __I386__ 1
+#define __i386__ 1
 #define __LP32__ 1
 #define __SMALL__ 1
 #elif defined(_M_X64)
@@ -162,7 +162,7 @@ along with LiveCode.  If not see <http://www.gnu.org/licenses/>.  */
 #if defined(__i386)
 #define __32_BIT__ 1
 #define __LITTLE_ENDIAN__ 1
-#define __I386__ 1
+#define __i386__ 1
 #define __LP32__ 1
 #define __SMALL__ 1
 #elif defined(__ppc__)
@@ -207,7 +207,7 @@ along with LiveCode.  If not see <http://www.gnu.org/licenses/>.  */
 #if defined(__i386)
 #define __32_BIT__ 1
 #define __LITTLE_ENDIAN__ 1
-#define __I386__ 1
+#define __i386__ 1
 #define __LP32__ 1
 #define __SMALL__
 #elif defined(__x86_64__)
@@ -249,7 +249,7 @@ along with LiveCode.  If not see <http://www.gnu.org/licenses/>.  */
 #if defined(__i386)
 #define __32_BIT__ 1
 #define __LITTLE_ENDIAN__ 1
-#define __I386__ 1
+#define __i386__ 1
 #define __LP32__ 1
 #define __SMALL__ 1
 #elif defined(__ppc__)
@@ -306,7 +306,7 @@ along with LiveCode.  If not see <http://www.gnu.org/licenses/>.  */
 #if defined(__i386)
 #define __32_BIT__ (1)
 #define __LITTLE_ENDIAN__ (1)
-#define __I386__ (1)
+#define __i386__ (1)
 #define __LP32__ (1)
 #define __SMALL__ (1)
 #elif defined(__x86_64__)
@@ -620,10 +620,14 @@ typedef uint16_t unichar_t;
 typedef wchar_t *BSTR;
 #endif
 
-#if defined(__MAC__) || defined(__IOS__)
+#if defined(__HAS_CORE_FOUNDATION__)
+typedef const void *CFTypeRef;
+typedef const struct __CFBoolean *CFBooleanRef;
 typedef const struct __CFNumber *CFNumberRef;
 typedef const struct __CFString *CFStringRef;
 typedef const struct __CFData *CFDataRef;
+typedef const struct __CFArray *CFArrayRef;
+typedef const struct __CFDictionary *CFDictionaryRef;
 #endif
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -677,6 +681,7 @@ typedef struct __MCStream *MCStreamRef;
 typedef struct __MCProperList *MCProperListRef;
 typedef struct __MCForeignValue *MCForeignValueRef;
 typedef struct __MCJavaObject *MCJavaObjectRef;
+typedef struct __MCObjcObject *MCObjcObjectRef;
 
 // Forward declaration
 typedef struct __MCLocale* MCLocaleRef;
@@ -1511,7 +1516,12 @@ inline void *MCValueGetExtraBytesPtr(MCValueRef value) { return ((uint8_t *)valu
 // Emit a debug log message containing the description of the value
 MC_DLLEXPORT void MCValueLog(MCValueRef);
 #endif
-
+    
+#if defined(__HAS_CORE_FOUNDATION__)
+MC_DLLEXPORT bool MCValueCreateWithCFTypeRef(CFTypeRef p_cf_value, bool p_use_lists, MCValueRef& r_cf_value);
+MC_DLLEXPORT bool MCValueConvertToCFTypeRef(MCValueRef p_value, bool p_use_lists, CFTypeRef& r_cf_value);
+#endif
+    
 //////////
 
 }
@@ -1643,6 +1653,13 @@ MC_DLLEXPORT extern MCTypeInfoRef kMCSIntPtrTypeInfo;
 MC_DLLEXPORT MCTypeInfoRef MCForeignUIntPtrTypeInfo(void) ATTRIBUTE_PURE;
 MC_DLLEXPORT MCTypeInfoRef MCForeignSIntPtrTypeInfo(void) ATTRIBUTE_PURE;
 
+MC_DLLEXPORT extern MCTypeInfoRef kMCNaturalUIntTypeInfo;
+MC_DLLEXPORT extern MCTypeInfoRef kMCNaturalSIntTypeInfo;
+MC_DLLEXPORT extern MCTypeInfoRef kMCNaturalFloatTypeInfo;
+MC_DLLEXPORT MCTypeInfoRef MCForeignNaturalUIntTypeInfo(void) ATTRIBUTE_PURE;
+MC_DLLEXPORT MCTypeInfoRef MCForeignNaturalSIntTypeInfo(void) ATTRIBUTE_PURE;
+MC_DLLEXPORT MCTypeInfoRef MCForeignNaturalFloatTypeInfo(void) ATTRIBUTE_PURE;
+
 MC_DLLEXPORT extern MCTypeInfoRef kMCCBoolTypeInfo;
 MC_DLLEXPORT MCTypeInfoRef MCForeignCBoolTypeInfo(void) ATTRIBUTE_PURE;
 
@@ -1742,7 +1759,7 @@ MC_DLLEXPORT bool MCBuiltinTypeInfoCreate(MCValueTypeCode typecode, MCTypeInfoRe
 
 //////////
 
-enum MCForeignPrimitiveType
+enum MCForeignPrimitiveType : uint8_t
 {
     kMCForeignPrimitiveTypeVoid,
     kMCForeignPrimitiveTypeBool,
@@ -1769,13 +1786,21 @@ struct MCForeignTypeDescriptor
     bool (*initialize)(void *contents);
     void (*finalize)(void *contents);
     bool (*defined)(void *contents);
-    bool (*move)(void *source, void *target);
-    bool (*copy)(void *source, void *target);
-    bool (*equal)(void *left, void *right, bool& r_equal);
-    bool (*hash)(void *contents, hash_t& r_hash);
-    bool (*doimport)(void *contents, bool release, MCValueRef& r_value);
-    bool (*doexport)(MCValueRef value, bool release, void *contents);
-	bool (*describe)(void *contents, MCStringRef & r_desc);
+    bool (*move)(const MCForeignTypeDescriptor* desc, void *source, void *target);
+    bool (*copy)(const MCForeignTypeDescriptor* desc, void *source, void *target);
+    bool (*equal)(const MCForeignTypeDescriptor* desc, void *left, void *right, bool& r_equal);
+    bool (*hash)(const MCForeignTypeDescriptor* desc, void *contents, hash_t& r_hash);
+    bool (*doimport)(const MCForeignTypeDescriptor* desc, void *contents, bool release, MCValueRef& r_value);
+    bool (*doexport)(const MCForeignTypeDescriptor* desc, MCValueRef value, bool release, void *contents);
+	bool (*describe)(const MCForeignTypeDescriptor* desc, void *contents, MCStringRef & r_desc);
+    
+    /* The promotedtype typeinfo is the type to which this type must be promoted
+     * when passed through variadic parameters. The 'promote' method does the
+     * promotion. */
+    MCTypeInfoRef promotedtype;
+    /* Promote the value in contents as necessary. The slot ptr must be big enough
+     * to hold the promotedtype. */
+    void (*promote)(void *contents);
 };
 
 MC_DLLEXPORT bool MCForeignTypeInfoCreate(const MCForeignTypeDescriptor *descriptor, MCTypeInfoRef& r_typeinfo);
@@ -1866,6 +1891,7 @@ enum MCHandlerTypeFieldMode
 	kMCHandlerTypeFieldModeIn,
 	kMCHandlerTypeFieldModeOut,
 	kMCHandlerTypeFieldModeInOut,
+    kMCHandlerTypeFieldModeVariadic,
 };
 
 struct MCHandlerTypeFieldInfo
@@ -1890,12 +1916,16 @@ MC_DLLEXPORT bool MCForeignHandlerTypeInfoCreate(const MCHandlerTypeFieldInfo *f
 
 // Returns true if the handler is of foreign type.
 MC_DLLEXPORT bool MCHandlerTypeInfoIsForeign(MCTypeInfoRef typeinfo);
+
+// Returns true if the handler is variadic.
+MC_DLLEXPORT bool MCHandlerTypeInfoIsVariadic(MCTypeInfoRef typeinfo);
     
 // Get the return type of the handler. A return-type of kMCNullTypeInfo means no
 // value is returned.
 MC_DLLEXPORT MCTypeInfoRef MCHandlerTypeInfoGetReturnType(MCTypeInfoRef typeinfo);
 
-// Get the number of parameters the handler takes.
+// Get the number of parameters the handler takes. If the handler is variadic,
+// this returns the number of fixed parameters.
 MC_DLLEXPORT uindex_t MCHandlerTypeInfoGetParameterCount(MCTypeInfoRef typeinfo);
 
 // Return the mode of the index'th parameter.
@@ -1945,9 +1975,6 @@ MC_DLLEXPORT bool MCJavaCallJNIMethod(MCNameRef p_class, void *p_method_id, int 
 // Get a Java method pointer for a given method in a class
 MC_DLLEXPORT void *MCJavaGetMethodId(MCNameRef p_class_name, MCStringRef p_method_name, MCStringRef p_arguments, MCStringRef p_return, int p_call_type);
 
-// Get a Java type code corresponding to the param string
-MC_DLLEXPORT int MCJavaMapTypeCode(MCStringRef p_param_string);
-
 // Get the name of a Java class from an instance of that class
 MC_DLLEXPORT bool MCJavaGetJObjectClassName(MCJavaObjectRef p_object, MCStringRef &r_name);
 // Convert a Java object wrapping a jstring to a String Ref
@@ -1975,7 +2002,12 @@ MC_DLLEXPORT extern MCBooleanRef kMCFalse;
 MC_DLLEXPORT extern MCBooleanRef kMCTrue;
 
 MC_DLLEXPORT bool MCBooleanCreateWithBool(bool value, MCBooleanRef& r_boolean);
-
+    
+#if defined(__HAS_CORE_FOUNDATION__)
+MC_DLLEXPORT bool MCBooleanCreateWithCFBooleanRef(CFBooleanRef p_cf_number, MCBooleanRef& r_number);
+MC_DLLEXPORT bool MCBooleanConvertToCFBooleanRef(MCBooleanRef p_number, CFBooleanRef& r_cf_number);
+#endif
+    
 ////////////////////////////////////////////////////////////////////////////////
 //
 //  NUMBER DEFINITIONS
@@ -1998,9 +2030,9 @@ MC_DLLEXPORT bool MCNumberParseOffset(MCStringRef p_string, uindex_t offset, uin
 MC_DLLEXPORT bool MCNumberParse(MCStringRef string, MCNumberRef& r_number);
 MC_DLLEXPORT bool MCNumberParseUnicodeChars(const unichar_t *chars, uindex_t char_count, MCNumberRef& r_number);
     
-#if defined(__MAC__) || defined (__IOS__)
-// Convert the given array to a CFArrayRef if it is a sequence.
-MC_DLLEXPORT bool MCNumberConvertToCFNumberRef(MCArrayRef self, CFNumberRef& r_array);
+#if defined(__HAS_CORE_FOUNDATION__)
+MC_DLLEXPORT bool MCNumberCreateWithCFNumberRef(CFNumberRef p_cf_number, MCNumberRef& r_number);
+MC_DLLEXPORT bool MCNumberConvertToCFNumberRef(MCNumberRef p_number, CFNumberRef& r_cf_number);
 #endif
     
 MC_DLLEXPORT extern MCNumberRef kMCZero;
@@ -2009,54 +2041,6 @@ MC_DLLEXPORT extern MCNumberRef kMCMinusOne;
 
 #define DBL_INT_MAX     (1LL << DBL_MANT_DIG)   /* the maximum integer faithfully representable by a double */
 #define DBL_INT_MIN     (-DBL_INT_MAX)          /* the minimum integer faithfully representable by a double */
-
-
-////////////////////////////////////////////////////////////////////////////////
-//
-//  NAME DEFINITIONS
-//
-
-// Like MCSTR but for NameRefs
-MC_DLLEXPORT MCNameRef MCNAME(const char *);
-
-// Create a name using the given string.
-MC_DLLEXPORT bool MCNameCreate(MCStringRef string, MCNameRef& r_name);
-// Create a name using chars.
-MC_DLLEXPORT bool MCNameCreateWithChars(const unichar_t *chars, uindex_t count, MCNameRef& r_name);
-// Create a name using native chars.
-MC_DLLEXPORT bool MCNameCreateWithNativeChars(const char_t *chars, uindex_t count, MCNameRef& r_name);
-
-// Create a name using the given string, releasing the original.
-MC_DLLEXPORT bool MCNameCreateAndRelease(MCStringRef string, MCNameRef& r_name);
-
-// Looks for an existing name matching the given string.
-MC_DLLEXPORT MCNameRef MCNameLookup(MCStringRef string);
-
-// Returns a unsigned integer which can be used to order a table for a binary
-// search.
-MC_DLLEXPORT uintptr_t MCNameGetCaselessSearchKey(MCNameRef name);
-
-// Returns the string content of the name.
-MC_DLLEXPORT MCStringRef MCNameGetString(MCNameRef name);
-
-// Returns true if the given name is the empty name.
-MC_DLLEXPORT bool MCNameIsEmpty(MCNameRef name);
-
-}
-
-// Returns true if the names are equal (caselessly). Note that MCNameIsEqualTo
-// is *not* the same as MCValueIsEqualTo as it is a comparison up to case (of
-// the name's string) rather than exact.
-bool MCNameIsEqualTo(MCNameRef left, MCNameRef right);
-bool MCNameIsEqualTo(MCNameRef self, MCNameRef p_other_name, bool p_case_sensitive, bool p_form_sensitive);
-
-extern "C" {
-
-// The empty name object;
-MC_DLLEXPORT extern MCNameRef kMCEmptyName;
-
-MC_DLLEXPORT extern MCNameRef kMCTrueName;
-MC_DLLEXPORT extern MCNameRef kMCFalseName;
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -2145,6 +2129,9 @@ MC_DLLEXPORT extern MCStringRef kMCLineEndString;
 // The default string for '\t'.
 MC_DLLEXPORT extern MCStringRef kMCTabString;
 
+// The default string for '\0'.
+MC_DLLEXPORT extern MCStringRef kMCNulString;
+
 /////////
 
 // Creates an MCStringRef wrapping the given constant c-string. Note that
@@ -2179,8 +2166,7 @@ MC_DLLEXPORT bool MCStringCreateWithCStringAndRelease(char *cstring /*delete[]*/
 
 #ifdef __HAS_CORE_FOUNDATION__
 // Create a string from a CoreFoundation string object.
-MC_DLLEXPORT bool MCStringCreateWithCFString(CFStringRef cf_string, MCStringRef& r_string);
-MC_DLLEXPORT bool MCStringCreateWithCFStringAndRelease(CFStringRef cf_string, MCStringRef& r_string);
+MC_DLLEXPORT bool MCStringCreateWithCFStringRef(CFStringRef cf_string, MCStringRef& r_string);
 #endif
 
 // Create a string from a Pascal-style (counted) string. This always uses the MacRoman encoding.
@@ -2437,7 +2423,7 @@ MC_DLLEXPORT bool MCStringConvertToWString(MCStringRef string, unichar_t*& r_wst
 // Converts the content to unicode_t*
 MC_DLLEXPORT bool MCStringConvertToUTF8String(MCStringRef string, char*& r_utf8string);
 
-#if defined(__MAC__) || defined (__IOS__)
+#ifdef __HAS_CORE_FOUNDATION__
 // Converts the content to CFStringRef
 MC_DLLEXPORT bool MCStringConvertToCFStringRef(MCStringRef string, CFStringRef& r_cfstring);
 #endif
@@ -2710,6 +2696,85 @@ MC_DLLEXPORT bool MCStringNormalizedCopyNFKD(MCStringRef, MCStringRef&);
 MC_DLLEXPORT bool MCStringSetNumericValue(MCStringRef self, double p_value);
 MC_DLLEXPORT bool MCStringGetNumericValue(MCStringRef self, double &r_value);
 
+enum MCStringLineEndingStyle
+{
+    kMCStringLineEndingStyleLF,
+    kMCStringLineEndingStyleCR,
+    kMCStringLineEndingStyleCRLF,
+#if defined(__CRLF__)
+    kMCStringLineEndingStyleLegacyNative = kMCStringLineEndingStyleCRLF,
+#elif defined(__CR__)
+    kMCStringLineEndingStyleLegacyNative = kMCStringLineEndingStyleCR,
+#elif defined(__LF__)
+    kMCStringLineEndingStyleLegacyNative = kMCStringLineEndingStyleLF,
+#else
+#error Unknown default line ending style (no __CRLF__, __CR__, __LF__ definition)
+#endif
+};
+
+typedef uint32_t MCStringLineEndingOptions;
+enum
+{
+  /* Normalize any occurrence of PS (paragraph separator) to the specified line-ending style */
+  kMCStringLineEndingOptionNormalizePSToLineEnding = 1 << 0,
+  /* Normalize any occurrence of LS (line separator) to VT (vertical tab) */
+  kMCStringLineEndingOptionNormalizeLSToVT = 1 << 1,
+};
+
+// Converts LF, CR, CRLF line endings in p_input to p_to_style line endings and
+// places the result into r_output. PS to p_to_style and LS to VTAB conversions
+// are performed if the appropriate flags are set in p_options. Detected line
+// endings of p_input are returned in r_original_style.
+MC_DLLEXPORT bool
+MCStringNormalizeLineEndings(MCStringRef p_input, 
+                             MCStringLineEndingStyle p_to_style, 
+                             MCStringLineEndingOptions p_options,
+                             MCStringRef& r_output, 
+                             MCStringLineEndingStyle* r_original_style);
+
+////////////////////////////////////////////////////////////////////////////////
+//
+//  NAME DEFINITIONS
+//
+
+// Like MCSTR but for NameRefs
+MC_DLLEXPORT MCNameRef MCNAME(const char *);
+
+// Create a name using the given string.
+MC_DLLEXPORT bool MCNameCreate(MCStringRef string, MCNameRef& r_name);
+// Create a name using chars.
+MC_DLLEXPORT bool MCNameCreateWithChars(const unichar_t *chars, uindex_t count, MCNameRef& r_name);
+// Create a name using native chars.
+MC_DLLEXPORT bool MCNameCreateWithNativeChars(const char_t *chars, uindex_t count, MCNameRef& r_name);
+
+// Create a name using the given string, releasing the original.
+MC_DLLEXPORT bool MCNameCreateAndRelease(MCStringRef string, MCNameRef& r_name);
+
+// Looks for an existing name matching the given string.
+MC_DLLEXPORT MCNameRef MCNameLookupCaseless(MCStringRef string);
+
+// Returns a unsigned integer which can be used to order a table for a binary
+// search.
+MC_DLLEXPORT uintptr_t MCNameGetCaselessSearchKey(MCNameRef name);
+
+// Returns the string content of the name.
+MC_DLLEXPORT MCStringRef MCNameGetString(MCNameRef name);
+
+// Returns true if the given name is the empty name.
+MC_DLLEXPORT bool MCNameIsEmpty(MCNameRef name);
+
+// Returns true if the names are equal under the options specified by options.
+MC_DLLEXPORT bool MCNameIsEqualTo(MCNameRef left, MCNameRef right, MCStringOptions p_options);
+
+// Returns true if the names are equal caselessly.
+MC_DLLEXPORT bool MCNameIsEqualToCaseless(MCNameRef left, MCNameRef right);
+
+// The empty name object;
+MC_DLLEXPORT extern MCNameRef kMCEmptyName;
+
+MC_DLLEXPORT extern MCNameRef kMCTrueName;
+MC_DLLEXPORT extern MCNameRef kMCFalseName;
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 //  DATA DEFINITIONS
@@ -2785,9 +2850,9 @@ MC_DLLEXPORT bool MCDataEndsWith(MCDataRef p_data, MCDataRef p_needle);
 MC_DLLEXPORT bool MCDataFirstIndexOf(MCDataRef p_data, MCDataRef p_chunk, MCRange t_range, uindex_t& r_index);
 MC_DLLEXPORT bool MCDataLastIndexOf(MCDataRef p_data, MCDataRef p_chunk, MCRange t_range, uindex_t& r_index);
 
-// convert the given data to CFDataRef
-#if defined(__MAC__) || defined (__IOS__)
-MC_DLLEXPORT bool MCDataConvertToCFDataRef(MCDataRef p_data, CFDataRef& r_cfdata);
+#if defined(__HAS_CORE_FOUNDATION__)
+MC_DLLEXPORT bool MCDataCreateWithCFDataRef(CFDataRef p_cf_data, MCDataRef& r_data);
+MC_DLLEXPORT bool MCDataConvertToCFDataRef(MCDataRef p_data, CFDataRef& r_cf_data);
 #endif
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2799,13 +2864,9 @@ MC_DLLEXPORT extern MCArrayRef kMCEmptyArray;
 
 // Create an immutable array containing the given keys and values.
 MC_DLLEXPORT bool MCArrayCreate(bool case_sensitive, const MCNameRef *keys, const MCValueRef *values, uindex_t length, MCArrayRef& r_array);
-// Create an immutable array containing the given keys and values with the requested string comparison options.
-MC_DLLEXPORT bool MCArrayCreateWithOptions(bool p_case_sensitive, bool p_form_sensitive, const MCNameRef *keys, const MCValueRef *values, uindex_t length, MCArrayRef& r_array);
 
 // Create an empty mutable array.
 MC_DLLEXPORT bool MCArrayCreateMutable(MCArrayRef& r_array);
-// Create an empty mutable array with the requested string comparison options.
-MC_DLLEXPORT bool MCArrayCreateMutableWithOptions(MCArrayRef& r_array, bool p_case_sensitive, bool p_form_sensitive);
 
 // Make an immutable copy of the given array. If the 'copy and release' form is
 // used then the original array is released (has its reference count reduced by
@@ -2824,11 +2885,6 @@ MC_DLLEXPORT bool MCArrayIsMutable(MCArrayRef array);
 
 // Returns the number of elements in the array.
 MC_DLLEXPORT uindex_t MCArrayGetCount(MCArrayRef array);
-
-// Returns whether the keys of the array have been predesignated case sensitive or not.
-MC_DLLEXPORT bool MCArrayIsCaseSensitive(MCArrayRef array);
-// Returns whether the keys of the array have been predesignated form sensitive or not.
-MC_DLLEXPORT bool MCArrayIsFormSensitive(MCArrayRef array);
 
 // Fetch the value from the array with the given key. The returned value is
 // not retained. If being stored elsewhere ValueCopy should be used to make an
@@ -2873,6 +2929,22 @@ MC_DLLEXPORT bool MCArrayIterate(MCArrayRef array, uintptr_t& iterator, MCNameRe
 
 // Returns true if the given array is the empty array.
 MC_DLLEXPORT bool MCArrayIsEmpty(MCArrayRef self);
+    
+#if defined(__HAS_CORE_FOUNDATION__)
+// If p_use_lists is true, then any arrays which look like sequences will be
+// converted to MCProperListRef / CFArrayRef (depending on direction).
+    
+MC_DLLEXPORT bool MCArrayCreateWithCFDictionaryRef(CFDictionaryRef p_cf_dictionary, bool p_use_lists, MCArrayRef& r_array);
+MC_DLLEXPORT bool MCArrayConvertToCFDictionaryRef(MCArrayRef p_value, bool p_use_lists, CFDictionaryRef& r_cf_value); 
+MC_DLLEXPORT bool MCArrayCreateWithCFArrayRef(CFArrayRef p_cf_array, bool p_use_lists, MCArrayRef& r_array);
+// Attempt to convert the array to a CFArrayRef. If the array cannot be
+// converted, r_cf_value is set to nullptr and true is returned.
+MC_DLLEXPORT bool MCArrayConvertToCFArrayRef(MCArrayRef p_value, bool p_use_lists, CFArrayRef& r_cf_value);
+#endif
+
+// Attempt to convert the array to a properlist. If the array cannot be
+// converted to a list, r_list is set to nullptr and true is returned.
+MC_DLLEXPORT bool MCArrayConvertToProperList(MCArrayRef p_array, MCProperListRef& r_list);
     
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -2988,12 +3060,19 @@ MC_DLLEXPORT bool MCRecordIterate(MCRecordRef record, uintptr_t& x_iterator, MCN
 //  HANDLER DEFINITIONS
 //
 
+enum MCHandlerQueryType
+{
+    kMCHandlerQueryTypeNone,
+    kMCHandlerQueryTypeObjcSelector,
+};
+    
 struct MCHandlerCallbacks
 {
     size_t size;
     void (*release)(void *context);
     bool (*invoke)(void *context, MCValueRef *arguments, uindex_t argument_count, MCValueRef& r_value);
 	bool (*describe)(void *context, MCStringRef& r_desc);
+    bool (*query)(void *context, MCHandlerQueryType type, void *r_info);
 };
 
 MC_DLLEXPORT bool MCHandlerCreate(MCTypeInfoRef typeinfo, const MCHandlerCallbacks *callbacks, void *context, MCHandlerRef& r_handler);
@@ -3001,8 +3080,19 @@ MC_DLLEXPORT bool MCHandlerCreate(MCTypeInfoRef typeinfo, const MCHandlerCallbac
 MC_DLLEXPORT void *MCHandlerGetContext(MCHandlerRef handler);
 MC_DLLEXPORT const MCHandlerCallbacks *MCHandlerGetCallbacks(MCHandlerRef handler);
     
+/* Invoke the given handler with the specified arguments. If an error is thrown
+ * then false is returned.
+ * Note: The normal version must be called from the engine thread. Use
+ *       ExternalInvoke if the current thread is unknown. */
 MC_DLLEXPORT bool MCHandlerInvoke(MCHandlerRef handler, MCValueRef *arguments, uindex_t argument_count, MCValueRef& r_value);
+MC_DLLEXPORT bool MCHandlerExternalInvoke(MCHandlerRef handler, MCValueRef *arguments, uindex_t argument_count, MCValueRef& r_value);
+
+/* Invoke the given handler with the specified arguments. If an error is thrown
+ * then the error object is returned.
+ * Note: The normal version must be called from the engine thread. Use
+ *       ExternalInvoke if the current thread is unknown. */
 MC_DLLEXPORT /*copy*/ MCErrorRef MCHandlerTryToInvokeWithList(MCHandlerRef handler, MCProperListRef& x_arguments, MCValueRef& r_value);
+MC_DLLEXPORT /*copy*/ MCErrorRef MCHandlerTryToExternalInvokeWithList(MCHandlerRef handler, MCProperListRef& x_arguments, MCValueRef& r_value);
     
 MC_DLLEXPORT bool MCHandlerGetFunctionPtr(MCHandlerRef handler, void*& r_func_ptr);
 
@@ -3308,6 +3398,12 @@ MC_DLLEXPORT bool MCProperListCreate(const MCValueRef *values, uindex_t length, 
 // foreign value is created (MCForeignValueRef).
 MC_DLLEXPORT bool MCProperListCreateWithForeignValues(MCTypeInfoRef type, const void *values, uindex_t value_count, MCProperListRef& r_list);
 
+// Create a c-array of foreign values from the given list. The original list is
+// not released. Ownership of the foreign value array is passed to the caller.
+// p_typeinfo must be a foreign typeinfo. If any value in the list is not of the
+// given type, or cannot be exported as that type, this returns false.
+MC_DLLEXPORT bool MCProperListConvertToForeignValues(MCProperListRef list, MCTypeInfoRef p_typeinfo, void*& r_values_ptr, uindex_t& r_values_count);
+    
 // Create an empty mutable list.
 MC_DLLEXPORT bool MCProperListCreateMutable(MCProperListRef& r_list);
 
@@ -3349,7 +3445,7 @@ typedef bool (*MCProperListMapCallback)(void *context, MCValueRef element, MCVal
 MC_DLLEXPORT bool MCProperListMap(MCProperListRef list, MCProperListMapCallback p_callback, MCProperListRef& r_new_list, void *context);
 
 // Sort list by comparing elements using the provided callback.
-typedef compare_t (*MCProperListQuickSortCallback)(const MCValueRef left, const MCValueRef right);
+typedef compare_t (*MCProperListQuickSortCallback)(const MCValueRef *left, const MCValueRef *right);
 MC_DLLEXPORT bool MCProperListSort(MCProperListRef list, bool p_reverse, MCProperListQuickSortCallback p_callback);
 
 typedef compare_t (*MCProperListCompareElementCallback)(void *context, const MCValueRef left, const MCValueRef right);
@@ -3402,6 +3498,83 @@ MC_DLLEXPORT bool MCProperListEndsWithList(MCProperListRef list, MCProperListRef
 
 MC_DLLEXPORT bool MCProperListIsListOfType(MCProperListRef list, MCValueTypeCode p_type);
 MC_DLLEXPORT bool MCProperListIsHomogeneous(MCProperListRef list, MCValueTypeCode& r_type);
+    
+#if defined(__HAS_CORE_FOUNDATION__)
+MC_DLLEXPORT bool MCProperListCreateWithCFArrayRef(CFArrayRef p_cf_dictionary, bool p_use_lists, MCProperListRef& r_list);
+MC_DLLEXPORT bool MCProperListConvertToCFArrayRef(MCProperListRef p_list, bool p_use_lists, CFArrayRef& r_list);
+#endif
+    
+MC_DLLEXPORT bool MCProperListConvertToArray(MCProperListRef p_list, MCArrayRef& r_array);
+    
+////////////////////////////////////////////////////////////////////////////////
+//
+//  OBJC DEFINITIONS
+//
+
+/* The ObjcObject type manages the lifetime of the obj-c object it contains.
+ * Specifcally, it sends 'release' to the object when the ObjcObject is dropped */
+MC_DLLEXPORT extern MCTypeInfoRef kMCObjcObjectTypeInfo;
+MC_DLLEXPORT MCTypeInfoRef MCObjcObjectTypeInfo(void) ATTRIBUTE_PURE;
+
+/* The ObjcId type describes an id which is passed into, or out of an obj-c
+ * method with no implicit action on its reference count. */
+MC_DLLEXPORT extern MCTypeInfoRef kMCObjcIdTypeInfo;
+MC_DLLEXPORT MCTypeInfoRef MCObjcIdTypeInfo(void) ATTRIBUTE_PURE;
+
+/* The ObjcRetainedId type describes an id which is passed into, or out of an
+ * obj-c method and is expected to already have been retained. (i.e. the
+ * caller or callee expects to receive it with +1 ref count). */
+MC_DLLEXPORT extern MCTypeInfoRef kMCObjcRetainedIdTypeInfo;
+MC_DLLEXPORT MCTypeInfoRef MCObjcRetainedIdTypeInfo(void) ATTRIBUTE_PURE;
+
+/* The ObjcAutoreleasedId type describes an id which has been placed in the
+ * innermost autorelease pool before being returned to the caller. */
+MC_DLLEXPORT extern MCTypeInfoRef kMCObjcAutoreleasedIdTypeInfo;
+MC_DLLEXPORT MCTypeInfoRef MCObjcAutoreleasedIdTypeInfo(void) ATTRIBUTE_PURE;
+
+/* The ObjcObjectCreateWithId function creates an ObjcObject out of a raw id
+ * value, retaining it to make sure it owns a reference to it. */
+MC_DLLEXPORT bool MCObjcObjectCreateWithId(void *value, MCObjcObjectRef& r_obj);
+
+/* The ObjcObjectCreateWithId function creates an ObjcObject out of a raw id
+ * value, taking a +1 reference count from it (i.e. it assumes the value has
+ * already been retained before being called). */
+MC_DLLEXPORT bool MCObjcObjectCreateWithRetainedId(void *value, MCObjcObjectRef& r_obj);
+
+/* The ObjcObjectCreateWithAutoreleasedId function creates an ObjcObject out of
+ * a raw id value which is in the innermost autorelease pool. Currently this
+ * means that it retains it. */
+MC_DLLEXPORT bool MCObjcObjectCreateWithAutoreleasedId(void *value, MCObjcObjectRef& r_obj);
+
+/* The ObjcObjectGetId function returns the raw id value contained within
+ * an ObjcObject. The retain count of the id remains unchanged. */
+MC_DLLEXPORT void *MCObjcObjectGetId(MCObjcObjectRef obj);
+
+/* The ObjcObjectGetRetainedId function returns the raw id value contained within
+ * an ObjcObject. The id is retained before being returned. */
+MC_DLLEXPORT void *MCObjcObjectGetRetainedId(MCObjcObjectRef obj);
+
+/* The ObjcObjectGetAutoreleasedId function returns the raw id value contained within
+ * an ObjcObject. The id is autoreleased before being returned. */
+MC_DLLEXPORT void *MCObjcObjectGetAutoreleasedId(MCObjcObjectRef obj);
+
+/* Create an ObjcObject containing an instance of the com_livecode_MCObjcFormalDelegate class,
+ * mapping protocol methods to MCHandlerRefs, with
+ * a context parameter. */
+MC_DLLEXPORT bool MCObjcCreateDelegateWithContext(MCStringRef p_protocol_name, MCArrayRef p_handler_mapping, MCValueRef p_context, MCObjcObjectRef& r_object);
+
+/* Create an ObjcObject containing an instance of  the com_livecode_MCObjcFormalDelegate class,
+ * mapping protocol methods to MCHandlerRefs. */
+MC_DLLEXPORT bool MCObjcCreateDelegate(MCStringRef p_protocol_name, MCArrayRef p_handler_mapping, MCObjcObjectRef& r_object);
+
+/* Create an ObjcObject containing an instance of  the com_livecode_MCObjcInformalDelegate class,
+ * mapping informal protocol methods specified as a list of foreign handler to MCHandlerRefs, with
+ * a context parameter. */
+MC_DLLEXPORT bool MCObjcCreateInformalDelegateWithContext(MCProperListRef p_foreign_handlers, MCArrayRef p_handler_mapping, MCValueRef p_context, MCObjcObjectRef& r_object);
+    
+/* Create an ObjcObject containing an instance of  the com_livecode_MCObjcInformalDelegate class,
+ * mapping informal protocol methods specified as a list of foreign handler to MCHandlerRefs. */
+MC_DLLEXPORT bool MCObjcCreateInformalDelegate(MCProperListRef p_foreign_handlers, MCArrayRef p_handler_mapping, MCObjcObjectRef& r_object);
     
 ////////////////////////////////////////////////////////////////////////////////
 

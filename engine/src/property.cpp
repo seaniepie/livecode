@@ -121,7 +121,8 @@ static MCPropertyInfo kMCPropertyInfoTable[] =
 	DEFINE_RO_PROPERTY(P_SCRIPT_EXECUTION_ERRORS, String, Engine, ScriptExecutionErrors)
 	DEFINE_RO_PROPERTY(P_SCRIPT_PARSING_ERRORS, String, Engine, ScriptParsingErrors)
 	
-	DEFINE_RO_ARRAY_PROPERTY(P_REV_LICENSE_INFO, Array, License, RevLicenseInfoByKey)
+    DEFINE_RW_ARRAY_PROPERTY(P_REV_LIBRARY_MAPPING, String, Engine, RevLibraryMappingByKey)
+    DEFINE_RO_ARRAY_PROPERTY(P_REV_LICENSE_INFO, Array, License, RevLicenseInfoByKey)
 	DEFINE_RO_PROPERTY(P_REV_LICENSE_INFO, String, License, RevLicenseInfo)
 	DEFINE_RW_PROPERTY(P_REV_LICENSE_LIMITS, Array, License, RevLicenseLimits)
 	DEFINE_RW_PROPERTY(P_REV_RUNTIME_BEHAVIOUR, UInt16, Legacy, RevRuntimeBehaviour)
@@ -450,7 +451,10 @@ bool lookup_property_override_name(uint16_t p_property, MCNameRef &r_name)
 {
 	for (uint32_t i = 0; i < property_overrides_size; i++)
 		if (property_overrides[i].property == p_property)
-			return MCNameCreateWithCString(property_overrides[i].lt.token, r_name);
+        {
+            r_name = MCNAME(property_overrides[i].lt.token);
+            return true;
+        }
 	
 	return false;
 }
@@ -513,7 +517,7 @@ Parse_stat MCProperty::parse(MCScriptPoint &sp, Boolean the)
 		else
 		{
 			which = P_CUSTOM;
-			/* UNCHECKED */ MCNameClone(sp . gettoken_nameref(), &customprop);
+            customprop = sp . gettoken_nameref();
 			if (sp.next(type) == PS_NORMAL && type == ST_LB)
 			{
 				if (sp.parseexp(False, True, &(&customindex)) != PS_NORMAL
@@ -935,7 +939,8 @@ Parse_stat MCProperty::parse(MCScriptPoint &sp, Boolean the)
     // MW-2014-12-10: [[ Extensions ]] Add support for global loadedExtensions property.
     case P_LOADED_EXTENSIONS:
         break;
-	        
+    
+    case P_REV_LIBRARY_MAPPING:
 	case P_REV_CRASH_REPORT_SETTINGS: // DEVELOPMENT only
 	case P_REV_LICENSE_INFO:
 	case P_DRAG_DATA:
@@ -1181,8 +1186,7 @@ bool MCProperty::resolveprop(MCExecContext& ctxt, Properties& r_which, MCNameRef
 	//   simplify code.
 	if (which == P_CUSTOM)
     {
-        if (!MCNameClone(*customprop, t_prop_name))
-            return false;
+        t_prop_name = MCValueRetain(*customprop);
     }
 	
 	// At present, something like the 'pVar[pIndex] of me' is evaluated as 'the pVar of me'

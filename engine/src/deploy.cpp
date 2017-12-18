@@ -367,6 +367,12 @@ bool MCDeployParameters::InitWithArray(MCExecContext &ctxt, MCArrayRef p_array)
 									  kMCStringOptionCompareCaseless))
 		banner_class = kMCLicenseClassProfessionalEvaluation;
 	
+    
+    if (!ctxt.CopyOptElementAsString(p_array, MCNAME("uuid"), false, t_temp_string))
+        return false;
+    MCValueAssign(uuid, t_temp_string);
+    MCValueRelease(t_temp_string);
+    
     return true;
 }
 
@@ -385,34 +391,51 @@ static bool MCDeployWriteDefinePrologueSection(const MCDeployParameters& p_param
 
 static bool MCDeployWriteDefineLicenseSection(const MCDeployParameters& p_params, MCDeployCapsuleRef p_capsule)
 {
-	// The edition byte encoding is development/standalone engine pair
-	// specific.
-	unsigned char t_edition;
-	switch(MClicenseparameters . license_class)
-	{
-		case kMCLicenseClassNone:
-			t_edition = 0;
-			break;
-			
-		case kMCLicenseClassCommunity:
-			t_edition = 1;
-			break;
-		
-		case kMCLicenseClassEvaluation:
-		case kMCLicenseClassCommercial:
-			t_edition = 2;
-			break;
-			
-		case kMCLicenseClassProfessionalEvaluation:
-		case kMCLicenseClassProfessional:
-			t_edition = 3;
-			break;
-	}
-	
-	return MCDeployCapsuleDefine(p_capsule,
+	bool t_success = true;
+    
+    IO_handle t_stream_handle;
+    t_stream_handle = nullptr;
+    if (t_success)
+    {
+        t_stream_handle = MCS_fakeopenwrite();
+        t_success = t_stream_handle != nullptr;
+    }
+    
+    if (t_success)
+    {
+        t_success = IO_write_uint1((uint1)MClicenseparameters . license_class, t_stream_handle) == IO_NORMAL;
+    }
+    
+    if (t_success && MClicenseparameters . addons != nullptr)
+    {
+        t_success = IO_write_valueref_new(MClicenseparameters . addons, t_stream_handle) == IO_NORMAL;
+    }
+    
+    //////////
+    
+    void *t_buffer;
+    size_t t_length = 0;
+    t_buffer = nullptr;
+    if (t_success)
+    {
+        t_success = MCS_closetakingbuffer(t_stream_handle, t_buffer, t_length) == IO_NORMAL;
+    }
+    
+    
+    if (t_success)
+    {
+        t_success = MCDeployCapsuleDefine(p_capsule,
 								 kMCCapsuleSectionTypeLicense,
-								 &t_edition,
-								 sizeof(t_edition));
+								 t_buffer,
+								 uint32_t(t_length));
+    }
+    
+    if (t_buffer != nullptr)
+    {
+        free(t_buffer);
+    }
+    
+    return t_success;
 }
 
 static bool MCDeployWriteDefineBannerSecion(const MCDeployParameters& p_params, MCDeployCapsuleRef p_capsule)
@@ -523,6 +546,17 @@ bool MCDeployWriteCapsule(const MCDeployParameters& p_params, MCDeployFileRef p_
             /* UNCHECKED */ MCArrayFetchValueAtIndex(p_params.redirects, i + 1, t_val);
 			t_success = MCDeployCapsuleDefineString(t_capsule, kMCCapsuleSectionTypeRedirect, (MCStringRef)t_val);
 		}
+
+    ////////
+    
+    // AL-2015-02-10: [[ Standalone Inclusions ]] Add the resource mappings, if any.
+    if (t_success)
+        for(uindex_t i = 0; i < MCArrayGetCount(p_params.library) && t_success; i++)
+        {
+            MCValueRef t_val;
+            /* UNCHECKED */ MCArrayFetchValueAtIndex(p_params.library, i + 1, t_val);
+            t_success = MCDeployCapsuleDefineString(t_capsule, kMCCapsuleSectionTypeLibrary, (MCStringRef)t_val);
+        }
     
     ////////
     
@@ -572,16 +606,7 @@ bool MCDeployWriteCapsule(const MCDeployParameters& p_params, MCDeployFileRef p_
 			if (t_success)
                 t_success = MCDeployCapsuleDefineFromStackFile(t_capsule, (MCStringRef)t_val, t_aux_stackfiles[i], false);
 		}
-	
-    // AL-2015-02-10: [[ Standalone Inclusions ]] Add the resource mappings, if any.
-    if (t_success)
-        for(uindex_t i = 0; i < MCArrayGetCount(p_params.library) && t_success; i++)
-        {
-            MCValueRef t_val;
-            /* UNCHECKED */ MCArrayFetchValueAtIndex(p_params.library, i + 1, t_val);
-            t_success = MCDeployCapsuleDefineString(t_capsule, kMCCapsuleSectionTypeLibrary, (MCStringRef)t_val);
-        }
-    
+
 	// Now add the externals, if any
 	if (t_success)
 		for(uindex_t i = 0; i < MCArrayGetCount(p_params.externals) && t_success; i++)
@@ -784,8 +809,7 @@ void MCIdeDeploy::exec_ctxt(MCExecContext& ctxt)
 
 	// If the banner_class field is set and we are not a trial license, we
 	// override the license class with that specified.
-	uint32_t t_license_class;
-	t_license_class = kMCLicenseClassNone;
+	MCLicenseClass t_license_class = kMCLicenseClassNone;
 	if (MClicenseparameters . license_class == kMCLicenseClassCommercial)
 	{
 		// If we have a commercial license, then we only allow a commercial

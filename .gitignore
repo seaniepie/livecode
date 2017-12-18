@@ -24,6 +24,7 @@ extensions/*/*/*.xml
 extensions/*/*/*.lci
 extensions/*/*/*.lcm
 extensions/*/*/*.lce
+extensions/*/*/api.lcdoc
 
 # Compiled source and intermediates #
 ###################
@@ -116,8 +117,10 @@ sdks/
 
 # Ignore prebuilts #
 ###################
+prebuilt/bin
 prebuilt/include
 prebuilt/lib
+prebuilt/share
 prebuilt/build
 prebuilt/packaged
 prebuilt/fetched
@@ -127,3 +130,9 @@ prebuilt/unpacked
 ###################################
 stamp-mlc*
 _mlc
+
+# Built Notes   #
+#################
+LiveCodeNotes-*
+LiveCodeUpdates-*
+LiveCodeUserGuide-*

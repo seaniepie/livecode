@@ -299,7 +299,11 @@ bool MCStandaloneCapsuleCallback(void *p_self, const uint8_t *p_digest, MCCapsul
 		
 		if (!MCdispatcher -> loadexternal(*t_resolved_external_str))
 		{
-			MCresult -> sets("failed to load external");
+            MCAutoStringRef t_error;
+            if (!MCStringFormat(&t_error, "failed to load external: %@", *t_external_str))
+                MCresult -> sets("failed to load external");
+            else
+                MCresult -> setvalueref(*t_error);
 			return false;
 		}
 	}
@@ -383,32 +387,59 @@ bool MCStandaloneCapsuleCallback(void *p_self, const uint8_t *p_digest, MCCapsul
             MCresult -> sets("failed to read module");
             return false;
         }
-    
-        bool t_success;
-        t_success = true;
         
-        MCStreamRef t_stream;
-        t_stream = nil;
+        MCAutoValueRefBase<MCStreamRef> t_stream;
+        bool t_success = MCMemoryInputStreamCreate(t_module_data.Bytes(),
+                                                   p_length, &t_stream);
+        
+        MCScriptModuleRef t_module = nullptr;
         if (t_success)
-            t_success = MCMemoryInputStreamCreate(t_module_data.Bytes(), p_length, t_stream);
+            t_success = MCScriptCreateModuleFromStream(*t_stream, t_module);
         
-        MCScriptModuleRef t_module;
         if (t_success)
-            t_success = MCScriptCreateModuleFromStream(t_stream, t_module);
+        {
+            extern bool MCEngineAddExtensionFromModule(MCScriptModuleRef module);
+            t_success = MCEngineAddExtensionFromModule(t_module);
+        }
         
-        if (t_stream != nil)
-            MCValueRelease(t_stream);
+        MCAutoStringRef t_module_resources;
+        if (t_success)
+            t_success = MCStringFormat(&t_module_resources, "%@/resources",
+                                       MCScriptGetNameOfModule(t_module));
+
+        MCAutoStringRef t_resources_path;
+        if (t_success && MCdispatcher -> fetchlibrarymapping(*t_module_resources,
+                                                             &t_resources_path))
+        {
+            // Resolve the relative path
+            MCAutoStringRef t_path;
+            if (MCStringBeginsWith(*t_resources_path, MCSTR("./"),
+                                   kMCStringOptionCompareExact) && MCcmd)
+            {
+                uindex_t t_last_slash_index;
+                // On Android, we need to substitute in the whole of MCcmd so
+                // that the apk path resolution works
+#ifndef TARGET_SUBPLATFORM_ANDROID
+                if (!MCStringLastIndexOfChar(MCcmd, '/', UINDEX_MAX, kMCStringOptionCompareExact, t_last_slash_index))
+#endif
+                    t_last_slash_index = MCStringGetLength(MCcmd);
+                
+                MCRange t_range;
+                t_range = MCRangeMake(0, t_last_slash_index);
+                t_success = MCStringFormat(&t_path, "%*@/%@", &t_range, MCcmd, *t_resources_path);
+            }
+            else
+                t_path = *t_resources_path;
+            
+            extern bool MCEngineAddResourcePathForModule(MCScriptModuleRef module, MCStringRef path);
+            if (t_success)
+                t_success = MCEngineAddResourcePathForModule(t_module, *t_path);
+        }
         
         if (!t_success)
         {
-            MCresult -> sets("failed to load module");
-            return false;
-        }
-        
-        extern bool MCEngineAddExtensionFromModule(MCScriptModuleRef module);
-        if (!MCEngineAddExtensionFromModule(t_module))
-        {
             MCScriptReleaseModule(t_module);
+            MCresult -> sets("failed to load module");
             return false;
         }
     }
@@ -430,26 +461,22 @@ bool MCStandaloneCapsuleCallback(void *p_self, const uint8_t *p_digest, MCCapsul
     
     case kMCCapsuleSectionTypeLicense:
     {
-        char t_edition_byte;
-        if (IO_read(&t_edition_byte, 1, p_stream) != IO_NORMAL)
+        uint8_t t_class;
+        MCAutoValueRef t_addons;
+        if (IO_read(&t_class, 1, p_stream) != IO_NORMAL ||
+            (p_length > 1 && IO_read_valueref_new(&t_addons, p_stream) != IO_NORMAL))
         {
             MCresult -> sets("failed to read license");
             return false;
         }
-
-        bool t_success;
-        t_success = true;
         
-        // The edition encoding is engine version / IDE engine version
-        // specific - for now its just a byte with value 0-3.
-        if (t_edition_byte == 1)
-            MClicenseparameters . license_class = kMCLicenseClassCommunity;
-        else if (t_edition_byte == 2)
-            MClicenseparameters . license_class = kMCLicenseClassCommercial;
-        else if (t_edition_byte == 3)
-            MClicenseparameters . license_class = kMCLicenseClassProfessional;
-        else
-            MClicenseparameters . license_class = kMCLicenseClassNone;
+        MClicenseparameters.license_class = (MCLicenseClass)t_class;
+
+        if (t_addons.IsSet())
+        {
+            MCValueAssign(MClicenseparameters . addons, static_cast<MCArrayRef>(*t_addons));
+        }
+        
     }
     break;
 			
@@ -716,6 +743,10 @@ MCDispatch::startup()
 	}
 
 	MCdefaultstackptr = MCstaticdefaultstackptr = t_stack;
+    
+    // the first auxiliary stack loaded during startup will currently be the home stack
+    // we want it to be the initial stack
+    MCdispatcher->changehome(t_stack);
 
 	/* Complete startup tasks and send the startup message */
 
@@ -941,6 +972,11 @@ IO_stat MCDispatch::startup(void)
 	
 	// Now open the main stack.
 	t_mainstack-> extraopen(false);
+    
+    // Resolve parent scripts *after* we've loaded aux stacks.
+    if (t_mainstack -> getextendedstate(ECS_USES_PARENTSCRIPTS))
+        t_mainstack -> resolveparentscripts();
+    
 	send_startup_message();
 	if (!MCquit)
 		t_mainstack -> open();
@@ -1309,6 +1345,12 @@ void MCModeSetupCrashReporting(void)
 bool MCModeHandleMessage(LPARAM lparam)
 {
 	return false;
+}
+
+// Pixel scaling can be enabled in standalone mode.
+bool MCModeCanEnablePixelScaling()
+{
+	return true;
 }
 
 // IM-2014-08-08: [[ Bug 12372 ]] Only use pixel scaling in the standalone

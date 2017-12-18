@@ -584,10 +584,6 @@
 			'src/mblandroid-theme.cpp',
 			'src/mbliphone-theme.mm',
 			'src/windows-theme.cpp',
-				
-			# Group "Syntax"
-			'src/syntax.h',
-			'src/syntax.cpp',
 			
 			# Other files
 			'src/socket_resolve.cpp',
@@ -676,7 +672,6 @@
 			'src/lnxdclnx.cpp',
 			'src/lnxdcs.cpp',
 			'src/lnxdnd.cpp',
-			'src/lnxflstold.cpp',
 			'src/lnxgtktheme.cpp',
 			'src/lnxgtkthemedrawing.cpp',
 			'src/lnximage.cpp',
@@ -762,9 +757,12 @@
 			# Group "Desktop - Emscripten"
 			'src/em-async.h',
 			'src/em-async.js',
+			'src/em-clipboard.h',
+			'src/em-clipboard.cpp',
 			'src/em-dc-mainloop.cpp',
 			'src/em-dc.h',
 			'src/em-dc.cpp',
+			'src/em-dc.js',
 			'src/em-dialog.js',
 			'src/em-event.h',
 			'src/em-event.cpp',
@@ -773,9 +771,13 @@
 			'src/em-filehandle.cpp',
 			'src/em-fontlist.h',
 			'src/em-fontlist.cpp',
+			'src/em-liburl.h',
+			'src/em-liburl.cpp',
+			'src/em-liburl.js',
 			'src/em-main.cpp',
 			'src/em-osspec-misc.cpp',
 			'src/em-osspec-network.cpp',
+			'src/em-preamble-overlay.js',
 			'src/em-preamble.js',
 			'src/em-resolution.cpp',
 			'src/em-stack.cpp',
@@ -784,6 +786,7 @@
 			'src/em-standalone.js',
 			'src/em-surface.h',
 			'src/em-surface.cpp',
+			'src/em-surface.js',
 			'src/em-system.h',
 			'src/em-system.cpp',
 			'src/em-system.js',
@@ -990,6 +993,13 @@
 			'src/engine.lcb',
 			'src/widget.lcb',
 		],
+        
+        # Engine LCB files containing syntax which don't require compiling into
+        # the engine.
+        'engine_syntax_only_lcb_files':
+        [
+            'src/license.lcb',
+        ],
 		
 		# Other engine LCB files
 		'engine_other_lcb_files':

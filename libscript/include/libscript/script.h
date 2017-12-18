@@ -53,6 +53,8 @@ bool MCScriptForEachBuiltinModule(MCScriptForEachBuiltinModuleCallback p_callbac
 
 void MCScriptSetLoadLibraryCallback(MCScriptLoadLibraryCallback callback);
 
+MCSLibraryRef MCScriptGetLibrary(void);
+
 void MCScriptSetWidgetBarrierCallbacks(MCScriptWidgetEnterCallback entry_callback, MCScriptWidgetLeaveCallback leave_callback);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -247,6 +249,12 @@ uint32_t MCScriptGetRetainCountOfModule(MCScriptModuleRef module);
 // Gets the module ptr for the most recent LCB stack frame on the current thread's stack.
 MCScriptModuleRef MCScriptGetCurrentModule(void);
 
+// Sets the licensed state of a module
+void MCScriptSetModuleLicensed(MCScriptModuleRef self, bool p_licensed);
+
+// Gets the licensed state of a module
+bool MCScriptIsModuleLicensed(MCScriptModuleRef self);
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // Create an instance of the given module. If the module is single-instance it
@@ -347,6 +355,7 @@ enum MCScriptHandlerTypeParameterMode
     kMCScriptHandlerTypeParameterModeIn,
     kMCScriptHandlerTypeParameterModeOut,
     kMCScriptHandlerTypeParameterModeInOut,
+    kMCScriptHandlerTypeParameterModeVariadic,
     
     kMCScriptHandlerTypeParameterMode__Last
 };

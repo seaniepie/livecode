@@ -1,4 +1,4 @@
-﻿script "com.livecode.script-library.oauth2"
+﻿script "com.livecode.library.oauth2"
 /*
 Copyright (C) 2016 LiveCode Ltd.
 
@@ -17,34 +17,41 @@ You should have received a copy of the GNU General Public License
 along with LiveCode.  If not see <http://www.gnu.org/licenses/>. 
 */
 
-on revLoadLibrary
+on extensionInitialize
    if the target is not me then
-      pass revLoadLibrary
+      pass extensionInitialize
    end if
    
    insert the script of me into back
    
    if the environment contains "development" then
       set the _ideoverride of me to true
-      revSBAddAvailableLibrary the short name of me, "OAuth2"
-      revSBAddDependencyForInclusion "scriptLibraries", "OAuth2", "externals", "mergJSON"
+      local tName
+      put the short name of me into tName
+      revSBAddDependencyForInclusion "extensions", tName, "scriptLibraries", "Internet"
+      revSBAddDependencyForInclusion "extensions", tName, "externals", "mergJSON"
+      revSBAddDependencyForInclusion "extensions", tName, "extensions", "com.livecode.widget.browser"
    end if
-end revLoadLibrary
+end extensionInitialize
 
-on revUnloadLibrary
+on extensionFinalize
    if the target is not me then
-      pass revUnloadLibrary
+      pass extensionFinalize
    end if
    
    remove the script of me from back
-end revUnloadLibrary
+end extensionFinalize
 
 /**
+Title: OAuth2 Library
 
-Present an authorization dialog for any web service that supports OAuth2 Authorization Code Flow 
+Version: 1.0.0
 
-Requires mergJSON
+Author: LiveCode
 
+Description: 
+Present an authorization dialog for any web service that supports 
+OAuth2 Authorization Code Flow 
 */
 
 constant kRedirectURL = "http://127.0.0.1"
@@ -118,7 +125,7 @@ pParams (optional array): An array of additional key -> value pairs of extra par
 the authorization url. Some services implement additional options that require extra parameters.
 
 The result:
-An error string if an error occured during authorization
+An error string if an error occurred during authorization
 
 It:
 An array containing the parsed JSON data returned by the token url
@@ -276,7 +283,7 @@ pRefreshToken (string): The refresh token obtained from a previous OAuth 2 autho
 pPort (integer): The port to use for the redirect uri. It is recommended to use the range 49152-65535.
 
 The result:
-An error string if an error occured during authorization
+An error string if an error occurred during authorization
 
 It:
 An array containing the parsed JSON data returned by the token url

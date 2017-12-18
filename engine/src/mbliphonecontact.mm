@@ -142,7 +142,7 @@ static bool name_to_key(MCNameRef p_name, CFStringRef &r_key)
 {
 	for (uindex_t i = 0; i < ELEMENTS(s_key_map); i++)
 	{
-		if (MCNameIsEqualTo(*s_key_map[i].name, p_name, kMCCompareCaseless))
+		if (MCNameIsEqualToCaseless(*s_key_map[i].name, p_name))
 		{
 			r_key = s_key_map[i].key;
 			return true;
@@ -179,7 +179,7 @@ bool MCCFDictionaryToArray(CFDictionaryRef p_dict, MCArrayRef &r_array)
 			if (key_to_name(t_dict_keys[i], &t_key_name))
 			{
 				MCAutoStringRef t_string;
-				MCStringCreateWithCFString((CFStringRef)t_dict_values[i], &t_string);
+				MCStringCreateWithCFStringRef((CFStringRef)t_dict_values[i], &t_string);
 				t_success = MCArrayStoreValue(*t_prop_array, false, *t_key_name, *t_string);
 			}
 		}
@@ -245,7 +245,7 @@ bool MCCreatePersonData(ABRecordRef p_person, MCArrayRef& r_contact)
 			if (!s_property_map[i].has_labels)
 			{
 				MCAutoStringRef t_value;
-				MCStringCreateWithCFString((CFStringRef)t_prop_value, &t_value);
+				MCStringCreateWithCFStringRef((CFStringRef)t_prop_value, &t_value);
 				t_success = MCContactAddProperty(*t_contact, *s_property_map[i].name, *t_value);
 			}
 			else
@@ -271,7 +271,7 @@ bool MCCreatePersonData(ABRecordRef p_person, MCArrayRef& r_contact)
 						if (t_proptype == kABStringPropertyType)
 						{
 							MCAutoStringRef t_value;
-							MCStringCreateWithCFString((CFStringRef)t_multi_value, &t_value);
+							MCStringCreateWithCFStringRef((CFStringRef)t_multi_value, &t_value);
 							t_success = MCContactAddPropertyWithLabel(*t_contact, *s_property_map[i].name, *t_label_name, *t_value);
 						}
 						else if (t_proptype == kABDictionaryPropertyType)
@@ -545,7 +545,7 @@ bool MCContactFindContact(MCStringRef p_person_name, MCStringRef &r_chosen)
 
     // AL-2015-05-14: [[ Bug 15370 ]] Crash when matching contact not found
     if (t_success && t_chosen != nil)
-		t_success = MCStringCreateWithCFString((CFStringRef)t_chosen, r_chosen);
+		t_success = MCStringCreateWithCFStringRef((CFStringRef)t_chosen, r_chosen);
 	
     if (t_people != nil)
 		[t_people release];

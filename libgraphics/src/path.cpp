@@ -487,8 +487,8 @@ void MCGPathAddArc(MCGPathRef self, MCGPoint p_center, MCGSize p_radii, MCGFloat
 		{
 			// Use Skia implementation
 			SkRect t_bounds;
-			t_bounds = SkRect::MakeXYWH(MCGCoordToSkCoord(p_center . x - (p_radii . width * 0.5f)), MCGCoordToSkCoord(p_center . y - (p_radii . height * 0.5f)),
-			                            MCGFloatToSkScalar(p_radii . width), MCGFloatToSkScalar(p_radii . height));
+			t_bounds = SkRect::MakeXYWH(MCGCoordToSkCoord(p_center . x - p_radii . width), MCGCoordToSkCoord(p_center . y - p_radii . height),
+			                            MCGFloatToSkScalar(p_radii . width * 2.0), MCGFloatToSkScalar(p_radii . height * 2.0));
 			self -> path -> addArc(t_bounds, MCGFloatToSkScalar(p_start_angle), MCGFloatToSkScalar(p_finish_angle - p_start_angle));
 		}
 	}
@@ -1079,32 +1079,6 @@ void MCGPathCloseSubpath(MCGPathRef self)
 		self -> path -> close();
 	
 	self -> is_valid = t_success;		
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-void MCGPathThicken(MCGPathRef self, const MCGStrokeAttr& p_attr, MCGPathRef& r_thick_path)
-{
-	if (!MCGPathIsValid(self))
-		return;
-	
-	// TODO: Implement
-}
-
-void MCGPathFlatten(MCGPathRef self, MCGFloat p_flatness, MCGPathRef& r_flat_path)
-{
-	if (!MCGPathIsValid(self))
-		return;
-	
-	// TODO: Implement
-}
-
-void MCGPathSimplify(MCGPathRef self, MCGPathRef& r_simple_path)
-{
-	if (!MCGPathIsValid(self))
-		return;
-	
-	// TODO: Implement
 }
 
 ////////////////////////////////////////////////////////////////////////////////

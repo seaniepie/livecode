@@ -96,7 +96,7 @@ static void
 usage(int status)
 {
     fprintf(stderr,
-"Usage: lc-compile [OPTION ...] --output OUTFILE [--] LCBFILE\n"
+"Usage: lc-compile [OPTION ...] --output OUTFILE [--] LCBFILE ... LCBFILE\n"
 "       lc-compile [OPTION ...] --outputc OUTFILE [--] LCBFILE ... LCBFILE\n"
 "       lc-compile [OPTION ...] --deps DEPTYPE [--] LCBFILE ... LCBFILE\n"
 "\n"
@@ -108,7 +108,8 @@ usage(int status)
 "      --outputc OUTFILE      Filename for C source code output.\n"
 "      --outputauxc OUTFILE   Filename for C source code output in auxillary mode.\n"
 "                             This generates an auxillary set of C source code\n"
-"                             modules, which do *not* include the builtin module.\n"
+"                             modules, which do *not* include the builtin module and\n"
+"                             do not produce builtin shims.\n"
 "      --deps make            Generate lci file dependencies in make format for\n"
 "                             the input source files.\n"
 "      --deps order           Generate the order the input source files should be\n"
@@ -261,12 +262,6 @@ static void full_main(int argc, char *argv[])
 		}
 		else
 		{
-			if (have_input_file == 1)
-			{
-				fprintf(stderr, "WARNING: Ignoring multiple input filenames.\n");
-				continue;
-			}
-			
 			AddFile(opt);
 			have_input_file = 1;
 		}

@@ -21,11 +21,11 @@ along with LiveCode.  If not see <http://www.gnu.org/licenses/>.  */
 #include "parsedef.h"
 #include "filedefs.h"
 
-
 #include "handler.h"
 #include "scriptpt.h"
 #include "variable.h"
 #include "statemnt.h"
+#include "uuid.h"
 
 #include "deploy.h"
 
@@ -894,6 +894,16 @@ struct version_min_command {
     uint32_t	sdk;		/* X.Y.Z is encoded in nibbles xxxx.yy.zz */
 };
 
+/*
+ * The uuid load command contains a single 128-bit unique random number that
+ * identifies an object produced by the static link editor.
+ */
+struct uuid_command {
+    uint32_t	cmd;		/* LC_UUID */
+    uint32_t	cmdsize;	/* sizeof(struct uuid_command) */
+    uint8_t	uuid[16];	/* the 128-bit uuid */
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct mach_32bit
@@ -1312,7 +1322,7 @@ template<typename T> bool MCDeployToMacOSXMainBody(const MCDeployParameters& p_p
 		t_old_project_offset = t_project_segment -> fileoff;
 		t_project_segment -> filesize = t_project_size;
 		t_project_segment -> vmsize = t_project_size;
-		((section *)(t_project_segment + 1))[0] . size = t_project_size;
+		((typename T::section *)(t_project_segment + 1))[0] . size = t_project_size;
         
 		if (t_payload_segment != nil)
 		{
@@ -1321,7 +1331,7 @@ template<typename T> bool MCDeployToMacOSXMainBody(const MCDeployParameters& p_p
 			t_old_payload_offset = t_payload_segment -> fileoff;
 			t_payload_segment -> filesize = t_payload_size;
 			t_payload_segment -> vmsize = t_payload_size;
-			((section *)(t_payload_segment + 1))[0] . size = t_payload_size;
+			((typename T::section *)(t_payload_segment + 1))[0] . size = t_payload_size;
 			relocate_segment_command<T>(t_project_segment, (t_payload_segment -> fileoff + t_payload_size) - t_old_project_offset, (t_payload_segment -> fileoff + t_payload_size) - t_old_project_offset);
 		}
 		
@@ -1333,7 +1343,8 @@ template<typename T> bool MCDeployToMacOSXMainBody(const MCDeployParameters& p_p
 			t_old_linkedit_offset = t_misc_segment -> fileoff;
         
 		// Now go through, updating the offsets for all load commands after
-		// and including linkedit.
+		// and including linkedit. We also update the uuid load command here,
+        // if one has been provided.
 		typename T::sfield t_file_delta, t_address_delta;
 		t_file_delta = (t_project_segment -> fileoff + t_project_size) - t_old_linkedit_offset;
 		t_address_delta = t_file_delta;
@@ -1369,9 +1380,25 @@ template<typename T> bool MCDeployToMacOSXMainBody(const MCDeployParameters& p_p
                 case LC_DATA_IN_CODE:
                     relocate_function_starts_command((linkedit_data_command *)t_commands[i], t_file_delta, t_address_delta);
                     break;
-					
-                // These commands have no file offsets
+                    
+                // Update the uuid, if one has been provided.
                 case LC_UUID:
+                    if (!MCStringIsEmpty(p_params.uuid))
+                    {
+                        MCAutoStringRefAsCString t_uuid_cstring;
+                        MCUuid t_uuid;
+                        if (t_uuid_cstring.Lock(p_params.uuid) &&
+                            MCUuidFromCString(*t_uuid_cstring, t_uuid))
+                        {
+                            uuid_command *t_uuid_cmd = (uuid_command *)t_commands[i];
+                            MCUuidToBytes(t_uuid, t_uuid_cmd->uuid);
+                        }
+                        else
+                            t_success = MCDeployThrow(kMCDeployErrorInvalidUuid);
+                    }
+                    break;
+                    
+                // These commands have no file offsets
                 case LC_THREAD:
                 case LC_UNIXTHREAD:
                 case LC_LOAD_DYLIB:
@@ -1585,7 +1612,7 @@ static bool MCDeployToMacOSXMain(const MCDeployParameters& p_params, bool p_big_
     return t_success;
 }
 
-#if 0
+#if LEGACY_EMBEDDED_DEPLOY
 static bool MCDeployToMacOSXEmbedded(const MCDeployParameters& p_params, bool p_big_endian, MCDeployFileRef p_engine, uint32_t p_engine_offset, uint32_t p_engine_size, uint32_t& x_offset, MCDeployFileRef p_output)
 {
 	bool t_success;
@@ -1845,7 +1872,7 @@ static bool MCDeployToMacOSXFat(const MCDeployParameters& p_params, bool p_embed
 		t_output_offset = 0;
 		if (!p_embedded)
             t_success = MCDeployToMacOSXMain(p_params, false, p_engine, 0, 0, t_output_offset, p_output, p_validate_header_callback);
-#if 0
+#if LEGACY_EMBEDDED_DEPLOY
 		else
 			t_success = MCDeployToMacOSXEmbedded(p_params, false, p_engine, 0, 0, t_output_offset, p_output);
 #endif
@@ -1906,7 +1933,7 @@ static bool MCDeployToMacOSXFat(const MCDeployParameters& p_params, bool p_embed
                     // Write out this arch's portion.
                     if (!p_embedded)
                         t_success = MCDeployToMacOSXMain(p_params, false, p_engine, t_fat_arch . offset, t_fat_arch . size, t_output_offset, p_output, p_validate_header_callback);
-    #if 0
+    #if LEGACY_EMBEDDED_DEPLOY
                     else
                         t_success = MCDeployToMacOSXEmbedded(p_params, false, p_engine, 0, 0, t_output_offset, p_output);
     #endif
@@ -2751,7 +2778,7 @@ template<typename T> static bool MCDeployExtractArchCallbackBody(MCDeployExtract
 	t_section = nil;
 	for(uint32_t i = 0; i < t_header . ncmds; i++)
 	{
-		if (t_commands[i] -> cmd != LC_SEGMENT)
+        if (t_commands[i] -> cmd != T::seg_load_command)
 			continue;
 		
 		typename T::segment_command *t_segment;

@@ -1747,6 +1747,10 @@ enum Properties {
     P_SCRIPT_STATUS,
     
     P_LONG_NAME_NO_FILENAME,
+    P_REV_SCRIPT_DESCRIPTION,
+    P_REV_BEHAVIOR_USES,
+    
+    P_REV_LIBRARY_MAPPING,
     
     __P_LAST,
 };
